@@ -12,7 +12,7 @@ This repo provides:
 - `MagicsSAC(SafetySAC)`: [WIP] SAC version of MAGICS (Wang and Hu et al., WAFR'24)
 - `MagicsPPO(SafetyPPO)`: [WIP] PPO version of MAGICS (Wang and Hu et al., WAFR'24)
 
-> Design principle: keep upstream SB3 untouched. This can live in a separate repo and still feel native to SB3 users.
+**Design principle: keep upstream SB3 untouched. This lives in a separate repo and still feels native to SB3 users.**
 
 ## Installation
 ```bash
@@ -81,5 +81,5 @@ def train():
 
 
 ## References
-- Fisac et al., “Bridging Hamilton-Jacobi Safety Analysis and Reinforcement Learning,” ICRA 2019.
-- Wang and Hu et al., "MAGICS: Adversarial RL with Minimax Actors Guided by Implicit Critic Stackelberg for Convergent Neural Synthesis of Robot Safety," WAFR 2024.
+- Fisac et al., “[Bridging Hamilton-Jacobi Safety Analysis and Reinforcement Learning](https://ieeexplore.ieee.org/document/8794107),” ICRA 2019.
+- Wang and Hu et al., "[MAGICS: Adversarial RL with Minimax Actors Guided by Implicit Critic Stackelberg for Convergent Neural Synthesis of Robot Safety](https://www.algorithmic-robotics.org/papers/45_MAGICS_Adversarial_RL_with_.pdf)," WAFR 2024.
