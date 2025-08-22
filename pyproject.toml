@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "safety-stable-baselines"
+version = "0.1.0"
+description = "Safety RL add-on for Stable-Baselines3"
+authors = [{name="Haimin Hu", email="haiminh@princeton.edu"}]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "stable-baselines3>=2.0.0",
+  "torch>=1.13",
+  "gymnasium>=0.28",
+  "numpy>=1.23",
+]
+
+[tool.setuptools]
+packages = ["safety_sb3"]
