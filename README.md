@@ -25,7 +25,7 @@ pip install -e .
 import os, sys
 import gymnasium as gym
 import numpy as np
-from safety_sac import SafetySAC
+from safety_sb3 import SafetySAC
 
 
 class PendulumSafety(gym.Wrapper):
