@@ -21,7 +21,7 @@ pip install -U torch stable-baselines3 gymnasium
 pip install -e .
 ```
 
-## Quick start
+## Quick start and example
 ```python
 import os, sys
 import gymnasium as gym
