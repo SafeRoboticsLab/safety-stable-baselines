@@ -87,4 +87,5 @@ def train():
 
 ## References
 - Fisac et al., “[Bridging Hamilton-Jacobi Safety Analysis and Reinforcement Learning](https://ieeexplore.ieee.org/document/8794107),” ICRA 2019.
+- Hsu et al., "[Safety and Liveness Guarantees through Reach-Avoid Reinforcement Learning](https://arxiv.org/pdf/2112.12288)," RSS 2021.
 - Wang and Hu et al., "[MAGICS: Adversarial RL with Minimax Actors Guided by Implicit Critic Stackelberg for Convergent Neural Synthesis of Robot Safety](https://www.algorithmic-robotics.org/papers/45_MAGICS_Adversarial_RL_with_.pdf)," WAFR 2024.
