@@ -105,7 +105,7 @@ def train_SAC():
 def train_DQN():
     base_env = gym.make("Pendulum-v1")
     env = PendulumSafety(base_env)
-    env = DiscretizeActionWrapper(env, n_bins=21)
+    env = DiscretizeActionWrapper(env, n_bins=41)
 
     model = SafetyDQN(
         policy="MlpPolicy",
@@ -137,4 +137,5 @@ def train_DQN():
 
 
 if __name__ == "__main__":
-    train_SAC()
+    # train_SAC()
+    train_DQN()

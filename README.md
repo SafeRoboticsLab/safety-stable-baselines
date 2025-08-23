@@ -1,5 +1,5 @@
 # safety-stable-baselines
-Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs.io/) that implements the Safety RL (Fisac et al., ICRA’19, Wang and Hu et al., WAFR'24).
+Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs.io/) that implements the Safety RL (Fisac et al., ICRA’19; Hsu et al., RSS'21; Wang and Hu et al., WAFR'24).
 
 ## TODO List
 
