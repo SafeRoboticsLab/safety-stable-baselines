@@ -8,11 +8,13 @@ Adversarial disturbance test on Pendulum-v1 (safety-only).
 """
 
 import os, sys
-import gymnasium as gym
 import numpy as np
+import gymnasium as gym
+from gymnasium import spaces
+from gymnasium.core import ActType, Wrapper
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from safety_sb3 import SafetySAC  # or: from safety_sac import SafetySAC
+from safety_sb3 import SafetySAC, SafetyDQN  # or: from safety_sac import...
 
 
 class PendulumSafety(gym.Wrapper):
@@ -49,8 +51,27 @@ class PendulumSafety(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
-def train():
-    # --- Train SafetySAC with reward == g(s) via wrapper ---
+class DiscretizeActionWrapper(Wrapper):
+    """Map Discrete(N) to original Box action via N bins."""
+
+    def __init__(self, env, n_bins=11):
+        super().__init__(env)
+        assert isinstance(env.action_space, spaces.Box) and env.action_space.shape == (1,)
+        self.n_bins = n_bins
+        self.action_space = spaces.Discrete(n_bins)
+        low, high = float(env.action_space.low[0]), float(env.action_space.high[0])
+        self.bins = np.linspace(low, high, n_bins)
+
+    def step(self, action: ActType):
+        cont = np.array([self.bins[int(action)]], dtype=np.float32)
+        obs, rew, term, trunc, info = self.env.step(cont)
+        return obs, rew, term, trunc, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
+
+
+def train_SAC():
     base_env = gym.make("Pendulum-v1")
     env = PendulumSafety(base_env)
 
@@ -70,6 +91,7 @@ def train():
         device="auto",
         verbose=1,
     )
+
     model.learn(100_000)
 
     # ---- SAVE ----
@@ -80,5 +102,39 @@ def train():
     print(f"Training complete! Saved trained SafetySAC model to {save_path}.zip")
 
 
+def train_DQN():
+    base_env = gym.make("Pendulum-v1")
+    env = PendulumSafety(base_env)
+    env = DiscretizeActionWrapper(env, n_bins=21)
+
+    model = SafetyDQN(
+        policy="MlpPolicy",
+        env=env,
+        learning_rate=3e-4,
+        buffer_size=100_000,
+        learning_starts=5_000,
+        batch_size=256,
+        tau=0.01,
+        gamma=0.995,  # safety discount
+        train_freq=4,
+        gradient_steps=1,
+        target_update_interval=10_000,  # update target network every X steps
+        exploration_fraction=0.1,  # fraction of total timesteps for ε-greedy decay
+        exploration_final_eps=0.05,  # final ε value
+        seed=0,
+        device="auto",
+        verbose=1,
+    )
+
+    model.learn(100_000)
+
+    # ---- SAVE ----
+    save_dir = "./examples/models"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, "pendulum_disc")
+    model.save(save_path)
+    print(f"Training complete! Saved trained SafetyDQN model to {save_path}.zip")
+
+
 if __name__ == "__main__":
-    train()
+    train_SAC()
