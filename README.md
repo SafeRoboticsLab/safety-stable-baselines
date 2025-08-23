@@ -4,7 +4,8 @@ Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs
 ## TODO List
 
 - [ ] Check if it is correct to add ent reg to next_q_values
-- [ ] Decide if we should max or min over all critics targets to get the target Q (for the avoid-only case)
+- [ ] Check if we should min over all critics targets to get the target Q (for the avoid-only case)
+- [ ] Look into the terminal reward; standard sb3 returns immediate reward when an episode terminates; for us it would be g, so it should be fine?
 
 This repo provides:
 - `SafetySAC(SAC)`: a drop-in subclass that learns a **safety critic** using the safety RL (Fisac et al., ICRA'19)
@@ -48,9 +49,13 @@ class PendulumSafety(gym.Wrapper):
 
     def step(self, action):
         obs, _base_reward, terminated, truncated, info = self.env.step(action)
+
         theta = self._theta_from_obs(obs)
         g = self.angle_limit - abs(theta)  # g(s): positive inside ±30°, negative outside
-        return obs, float(g), terminated, truncated, info
+
+        # overwrite terminated when g(s) < 0
+        if g < 0.0:
+            terminated = True  # end episode on safety breach
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)

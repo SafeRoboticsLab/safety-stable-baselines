@@ -35,8 +35,14 @@ class PendulumSafety(gym.Wrapper):
 
     def step(self, action):
         obs, _base_reward, terminated, truncated, info = self.env.step(action)
+
         theta = self._theta_from_obs(obs)
         g = self.angle_limit - abs(theta)  # g(s): positive inside ±30°, negative outside
+
+        # overwrite terminated when g(s) < 0
+        if g < 0.0:
+            terminated = True  # end episode on safety breach
+
         return obs, float(g), terminated, truncated, info
 
     def reset(self, **kwargs):
