@@ -14,7 +14,7 @@ from gymnasium import spaces
 from gymnasium.core import ActType, Wrapper
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from safety_sb3 import SafetySAC, SafetyDQN  # or: from safety_sac import...
+from safety_sb3 import SafetySAC, SafetyDQN, SafetyPPO, SafetyRolloutBuffer  # or: from safety_sac import...
 
 
 class PendulumSafety(gym.Wrapper):
@@ -136,6 +136,40 @@ def train_DQN():
     print(f"Training complete! Saved trained SafetyDQN model to {save_path}.zip")
 
 
+def train_PPO():
+    base_env = gym.make("Pendulum-v1")
+    env = PendulumSafety(base_env)
+
+    model = SafetyPPO(
+        policy="MlpPolicy",
+        env=env,
+        learning_rate=3e-4,
+        n_steps=2048,  # on-policy rollout length
+        batch_size=64,  # minibatch size
+        n_epochs=10,  # PPO epochs per update
+        gamma=0.995,  # safety discount (used by buffer via gamma_s)
+        ent_coef=0.01,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        target_kl=0.02,
+        clip_range=0.2,
+        rollout_buffer_class=SafetyRolloutBuffer,
+        seed=0,
+        device="auto",
+        verbose=1,
+    )
+
+    model.learn(100_000)
+
+    # ---- SAVE ----
+    save_dir = "./examples/models"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, "pendulum_ppo")
+    model.save(save_path)
+    print(f"Training complete! Saved trained SafetyPPO model to {save_path}.zip")
+
+
 if __name__ == "__main__":
     # train_SAC()
-    train_DQN()
+    # train_DQN()
+    train_PPO()
