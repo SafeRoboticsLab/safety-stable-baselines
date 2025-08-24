@@ -3,7 +3,8 @@ from .safety_buffers import SafetyRolloutBuffer
 
 
 class SafetyPPO(PPO):
-    """Safety PPO with discounted–min safety targets."""
+    """Safety PPO.
+    """
 
     def __init__(self, *args, rollout_buffer_class=None, rollout_buffer_kwargs=None, **kwargs):
         # Default to SafetyRolloutBuffer unless the caller overrides it

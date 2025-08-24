@@ -10,7 +10,7 @@ Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs
 This repo provides:
 - `SafetySAC(SAC)`: SAC version safety RL (Fisac et al., ICRA'19)
 - `SafetyDQN(DQN)`: DQN version of safety RL
-- `SafetyPPO(PPO)`: [WIP] PPO version of safety RL
+- `SafetyPPO(PPO)`: PPO version of safety RL
 - `MagicsSAC(SafetySAC)`: [WIP] SAC version of MAGICS (Wang and Hu et al., WAFR'24)
 - `MagicsPPO(SafetyPPO)`: [WIP] PPO version of MAGICS (Wang and Hu et al., WAFR'24)
 
