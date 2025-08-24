@@ -82,6 +82,7 @@ def train():
         device="auto",
         verbose=1,
     )
+
     model.learn(100_000)
 ```
 
