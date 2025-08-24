@@ -3,14 +3,14 @@ Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs
 
 ## TODO List
 
-- [ ] Check if it is correct to add ent reg to next_q_values
-- [ ] Check if we should min over all critics targets to get the target Q (for the avoid-only case)
+- [ ] Check if for SAC it is correct to add ent reg to next_q_values
 - [ ] Look into the terminal reward; standard sb3 returns immediate reward when an episode terminates; for us it would be g, so it should be fine?
 
 This repo provides:
-- `SafetySAC(SAC)`: SAC version safety RL (Fisac et al., ICRA'19)
-- `SafetyDQN(DQN)`: DQN version of safety RL
-- `SafetyPPO(PPO)`: PPO version of safety RL
+- `SafetySAC(SAC)`: SAC version safety RL (Fisac et al., ICRA'19) - off policy
+- `SafetyDQN(DQN)`: DQN version of safety RL - off policy
+- `SafetyPPO(PPO)`: PPO version of safety RL - on policy
+- `SafetyA2C(A2C)`: A2C version of safety RL - on policy
 - `MagicsSAC(SafetySAC)`: [WIP] SAC version of MAGICS (Wang and Hu et al., WAFR'24)
 - `MagicsPPO(SafetyPPO)`: [WIP] PPO version of MAGICS (Wang and Hu et al., WAFR'24)
 

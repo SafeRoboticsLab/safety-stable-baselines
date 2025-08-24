@@ -177,15 +177,14 @@ def train_A2C():
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
-        n_steps=2048,  # on-policy rollout length
-        batch_size=64,  # minibatch size
-        n_epochs=10,  # PPO epochs per update
-        gamma=0.995,  # safety discount (used by buffer via gamma_s)
+        n_steps=128,
+        gamma=0.995,
+        gae_lambda=0.95,
         ent_coef=0.01,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        target_kl=0.02,
-        clip_range=0.2,
+        use_sde=True,
+        sde_sample_freq=4,
         rollout_buffer_class=SafetyRolloutBuffer,
         seed=0,
         device="auto",
@@ -197,12 +196,13 @@ def train_A2C():
     # ---- SAVE ----
     save_dir = "./examples/models"
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, "pendulum_ppo")
+    save_path = os.path.join(save_dir, "pendulum_a2c")
     model.save(save_path)
-    print(f"Training complete! Saved trained SafetyPPO model to {save_path}.zip")
+    print(f"Training complete! Saved trained SafetyA2C model to {save_path}.zip")
 
 
 if __name__ == "__main__":
     # train_SAC()
     # train_DQN()
-    train_PPO()
+    # train_PPO()
+    train_A2C()
