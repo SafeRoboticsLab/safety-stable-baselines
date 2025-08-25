@@ -9,10 +9,6 @@ description = "Safety RL add-on for Stable-Baselines3"
 readme = "README.md"
 requires-python = ">=3.8"
 
-authors = [
-  { name = "Haimin Hu", email = "haimin@cs.jhu.edu" }
-]
-
 license = { file = "LICENSE" }
 
 dependencies = [
