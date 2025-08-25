@@ -18,6 +18,7 @@ class SafetyA2C(A2C):
     def _setup_model(self) -> None:
         # Builds policy, optimizer, and rollout buffer
         super()._setup_model()
+
         # Now the buffer exists → safe to assert
         assert isinstance(self.rollout_buffer, SafetyRolloutBuffer), (
             "SafetyA2C requires SafetyRolloutBuffer. "

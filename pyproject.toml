@@ -1,14 +1,20 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "safety-stable-baselines"
+name = "safety-sb3"
 version = "0.1.0"
 description = "Safety RL add-on for Stable-Baselines3"
-authors = [{name="Haimin Hu", email="haiminh@princeton.edu"}]
 readme = "README.md"
 requires-python = ">=3.8"
+
+authors = [
+  { name = "Haimin Hu", email = "haimin@cs.jhu.edu" }
+]
+
+license = { file = "LICENSE" }
+
 dependencies = [
   "stable-baselines3>=2.0.0",
   "torch>=1.13",
@@ -16,5 +22,12 @@ dependencies = [
   "numpy>=1.23",
 ]
 
-[tool.setuptools]
-packages = ["safety_sb3"]
+[project.urls]
+Homepage = "https://github.com/SafeRoboticsLab/safety-stable-baselines"
+Repository = "https://github.com/SafeRoboticsLab/safety-stable-baselines"
+Issues = "https://github.com/SafeRoboticsLab/safety-stable-baselines/issues"
+
+# Package discovery
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["safety_sb3*"]
