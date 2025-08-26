@@ -4,7 +4,6 @@ Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs
 ## TODO List
 
 - [ ] Check if for SAC it is correct to add ent reg to next_q_values
-- [ ] Look into the terminal reward; standard sb3 returns immediate reward when an episode terminates; for us it would be g, so it should be fine?
 
 This repo provides:
 - `SafetySAC(SAC)`: SAC version safety RL (Fisac et al., ICRA'19) - off policy

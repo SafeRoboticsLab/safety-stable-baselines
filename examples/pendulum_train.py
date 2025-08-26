@@ -115,7 +115,7 @@ def train_DQN():
         learning_starts=5_000,
         batch_size=256,
         tau=0.01,
-        gamma=0.995,  # safety discount
+        gamma=0.999,  # safety discount
         train_freq=4,
         gradient_steps=1,
         target_update_interval=10_000,  # update target network every X steps
@@ -126,7 +126,7 @@ def train_DQN():
         verbose=1,
     )
 
-    model.learn(100_000)
+    model.learn(300_000)
 
     # ---- SAVE ----
     save_dir = "./examples/models"

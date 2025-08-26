@@ -26,8 +26,10 @@ class SafetyRolloutBuffer(RolloutBuffer):
             # Safety Bellman backup
             g_t = self.rewards[step]
             v_to_go = np.minimum(g_t, v_next)
-            delta = (1.0 - self.gamma
-                    ) * g_t + self.gamma * next_non_terminal * v_to_go - self.values[step]
+            delta = (
+                1.0 - self.gamma * next_non_terminal
+            ) * g_t + self.gamma * next_non_terminal * v_to_go  # ensures that the full gs is returned at terminal states
+            delta -= self.values[step]
             last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
             self.advantages[step] = last_gae_lam
 

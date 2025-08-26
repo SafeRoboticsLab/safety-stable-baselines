@@ -79,7 +79,9 @@ class SafetySAC(SAC):
                 gs = replay_data.rewards  # immediate safety margin values g(s) from env rewards
                 not_done = 1.0 - replay_data.dones
                 v_to_go = th.minimum(gs, next_q_values)
-                target_q_values = (1.0 - self.gamma) * gs + self.gamma * not_done * v_to_go
+                target_q_values = (
+                    1.0 - self.gamma * not_done
+                ) * gs + self.gamma * not_done * v_to_go  # ensures that the full gs is returned at terminal states
 
             # Get current Q-values estimates for each critic network
             # using action from the replay buffer
