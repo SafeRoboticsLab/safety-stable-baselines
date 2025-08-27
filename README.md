@@ -57,6 +57,8 @@ class PendulumSafety(gym.Wrapper):
         if g < 0.0:
             terminated = True  # end episode on safety breach
 
+        return obs, float(g), terminated, truncated, info
+
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
