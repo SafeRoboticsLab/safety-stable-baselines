@@ -11,6 +11,7 @@ from stable_baselines3.common.type_aliases import GymResetReturn, GymStepReturn
 
 # Convert to tuple, so it is compatible with YAML
 class YAMLCompatResizeObservation(ResizeObservation):
+
     def __init__(self, env: gym.Env, shape: list[int]):
         super().__init__(env, (shape[0], shape[1]))
 
@@ -94,7 +95,9 @@ class ActionSmoothingWrapper(gym.Wrapper):
         if self.smoothed_action is None:
             self.smoothed_action = np.zeros_like(action)
         assert self.smoothed_action is not None
-        self.smoothed_action = self.smoothing_coef * self.smoothed_action + (1 - self.smoothing_coef) * action
+        self.smoothed_action = self.smoothing_coef * self.smoothed_action + (
+            1 - self.smoothing_coef
+        ) * action
         return self.env.step(self.smoothed_action)
 
 
@@ -158,7 +161,9 @@ class HistoryWrapper(gym.Wrapper[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
         high = np.concatenate((high_obs, high_action))
 
         # Overwrite the observation space
-        env.observation_space = spaces.Box(low=low, high=high, dtype=wrapped_obs_space.dtype)  # type: ignore[arg-type]
+        env.observation_space = spaces.Box(
+            low=low, high=high, dtype=wrapped_obs_space.dtype
+        )  # type: ignore[arg-type]
 
         super().__init__(env)
 
@@ -172,13 +177,14 @@ class HistoryWrapper(gym.Wrapper[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
     def _create_obs_from_history(self) -> np.ndarray:
         return np.concatenate((self.obs_history, self.action_history))
 
-    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> tuple[np.ndarray, dict]:
+    def reset(self, seed: Optional[int] = None,
+              options: Optional[dict] = None) -> tuple[np.ndarray, dict]:
         # Flush the history
         self.obs_history[...] = 0
         self.action_history[...] = 0
         assert options is None, "Options not supported for now"
         obs, info = self.env.reset(seed=seed)
-        self.obs_history[..., -obs.shape[-1] :] = obs
+        self.obs_history[..., -obs.shape[-1]:] = obs
         return self._create_obs_from_history(), info
 
     def step(self, action) -> tuple[np.ndarray, SupportsFloat, bool, bool, dict]:
@@ -186,10 +192,10 @@ class HistoryWrapper(gym.Wrapper[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
         last_ax_size = obs.shape[-1]
 
         self.obs_history = np.roll(self.obs_history, shift=-last_ax_size, axis=-1)
-        self.obs_history[..., -obs.shape[-1] :] = obs
+        self.obs_history[..., -obs.shape[-1]:] = obs
 
         self.action_history = np.roll(self.action_history, shift=-action.shape[-1], axis=-1)
-        self.action_history[..., -action.shape[-1] :] = action
+        self.action_history[..., -action.shape[-1]:] = action
         return self._create_obs_from_history(), reward, terminated, truncated, info
 
 
@@ -237,14 +243,15 @@ class HistoryWrapperObsDict(gym.Wrapper):
     def _create_obs_from_history(self) -> np.ndarray:
         return np.concatenate((self.obs_history, self.action_history))
 
-    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> tuple[dict[str, np.ndarray], dict]:
+    def reset(self, seed: Optional[int] = None,
+              options: Optional[dict] = None) -> tuple[dict[str, np.ndarray], dict]:
         # Flush the history
         self.obs_history[...] = 0
         self.action_history[...] = 0
         assert options is None, "Options not supported for now"
         obs_dict, info = self.env.reset(seed=seed)
         obs = obs_dict["observation"]
-        self.obs_history[..., -obs.shape[-1] :] = obs
+        self.obs_history[..., -obs.shape[-1]:] = obs
 
         obs_dict["observation"] = self._create_obs_from_history()
 
@@ -256,10 +263,10 @@ class HistoryWrapperObsDict(gym.Wrapper):
         last_ax_size = obs.shape[-1]
 
         self.obs_history = np.roll(self.obs_history, shift=-last_ax_size, axis=-1)
-        self.obs_history[..., -obs.shape[-1] :] = obs
+        self.obs_history[..., -obs.shape[-1]:] = obs
 
         self.action_history = np.roll(self.action_history, shift=-action.shape[-1], axis=-1)
-        self.action_history[..., -action.shape[-1] :] = action
+        self.action_history[..., -action.shape[-1]:] = action
 
         obs_dict["observation"] = self._create_obs_from_history()
 

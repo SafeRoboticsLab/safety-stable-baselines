@@ -5,6 +5,14 @@ from gymnasium.envs.registration import register, register_envs
 
 from rl_zoo3.wrappers import MaskVelocityWrapper
 
+# === SafetySB3 custom environments ===
+try:
+    import rl_zoo3.safety_envs  # noqa: F401
+    print("[SafetySB3] Registered custom safety environments")
+except ImportError:
+    print("[SafetySB3] Warning: Could not import safety_sb3 environments")
+
+# === Other zoo custom envs ===
 try:
     import pybullet_envs_gymnasium
 except ImportError:
@@ -56,6 +64,7 @@ except ImportError:
 
 # Register no vel envs
 def create_no_vel_env(env_id: str) -> Callable[[Optional[str]], gym.Env]:
+
     def make_env(render_mode: Optional[str] = None) -> gym.Env:
         env = gym.make(env_id, render_mode=render_mode)
         env = MaskVelocityWrapper(env)

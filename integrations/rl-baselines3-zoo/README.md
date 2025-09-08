@@ -1,6 +1,18 @@
 # Quick Guide to Integrate Safety sb3 with RL Baselines3 Zoo
 1. (Optional) Create venv ```conda create -n safety_sb3 python=3.12 ```
 2. Install safety_sb3 and rl-baselines3-zoo ```pip install -e . ```
+3. Create a wrapper to define margin-based safety rewards for a given environment (see **Define a Safety Environment**)
+
+# Define a Safety Environment
+1. Write the safety wrapper and put it under rl_zoo3/safety_envs (see for example, `classic_control.py`)
+2. Update `__init__.py` in safety_envs
+3. If you added a new file, update it in rl_zoo3/import_envs.py
+
+
+Example run:
+```
+python train.py --algo sac --env Pendulum-v1 --eval-freq 10000 --eval-episodes 10 --n-eval-envs 1 --track --wandb-project-name safety_sb3
+```
 
 
 **The following is forked from RL Baselines3 Zoo: https://github.com/DLR-RM/stable-baselines3/commit/7883ed4d20bc9edf3a22a053c77b3146c518a937**
