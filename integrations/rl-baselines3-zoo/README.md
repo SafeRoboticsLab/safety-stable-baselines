@@ -5,6 +5,7 @@
 
 **The following is forked from RL Baselines3 Zoo: https://github.com/DLR-RM/stable-baselines3/commit/7883ed4d20bc9edf3a22a053c77b3146c518a937**
 
+---
 
 
 <!-- [![pipeline status](https://gitlab.com/araffin/rl-baselines3-zoo/badges/master/pipeline.svg)](https://gitlab.com/araffin/rl-baselines3-zoo/-/commits/master) -->
