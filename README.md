@@ -1,17 +1,15 @@
 # safety-stable-baselines
-Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs.io/) that implements the Safety RL (Fisac et al., ICRA’19; Hsu et al., RSS'21; Wang and Hu et al., WAFR'24).
+Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs.io/) that implements the Safety RL (Fisac et al., ICRA’19).
 
 ## TODO List
 
 - [ ] Check if for SAC it is correct to add ent reg to next_q_values
 
 This repo provides:
-- `SafetySAC(SAC)`: SAC version safety RL (Fisac et al., ICRA'19) - off policy
+- `SafetySAC(SAC)`: SAC version of safety RL - off policy
 - `SafetyDQN(DQN)`: DQN version of safety RL - off policy
 - `SafetyPPO(PPO)`: PPO version of safety RL - on policy
 - `SafetyA2C(A2C)`: A2C version of safety RL - on policy
-- `MagicsSAC(SafetySAC)`: [WIP] SAC version of MAGICS (Wang and Hu et al., WAFR'24)
-- `MagicsPPO(SafetyPPO)`: [WIP] PPO version of MAGICS (Wang and Hu et al., WAFR'24)
 
 **Design principle: keep upstream SB3 untouched. This lives in a separate repo and still feels native to SB3 users.**
 
@@ -90,5 +88,3 @@ def train():
 
 ## References
 - Fisac et al., “[Bridging Hamilton-Jacobi Safety Analysis and Reinforcement Learning](https://ieeexplore.ieee.org/document/8794107),” ICRA 2019.
-- Hsu et al., "[Safety and Liveness Guarantees through Reach-Avoid Reinforcement Learning](https://arxiv.org/pdf/2112.12288)," RSS 2021.
-- Wang and Hu et al., "[MAGICS: Adversarial RL with Minimax Actors Guided by Implicit Critic Stackelberg for Convergent Neural Synthesis of Robot Safety](https://www.algorithmic-robotics.org/papers/45_MAGICS_Adversarial_RL_with_.pdf)," WAFR 2024.
