@@ -1,3 +1,12 @@
+# Quick Guide to Integrate Safety sb3 with RL Baselines3 Zoo
+1. (Optional) Create venv ```conda create -n safety_sb3 python=3.12 ```
+2. Install safety_sb3 and rl-baselines3-zoo ```pip install -e . ```
+
+
+**The following is forked from RL Baselines3 Zoo: https://github.com/DLR-RM/stable-baselines3/commit/7883ed4d20bc9edf3a22a053c77b3146c518a937**
+
+
+
 <!-- [![pipeline status](https://gitlab.com/araffin/rl-baselines3-zoo/badges/master/pipeline.svg)](https://gitlab.com/araffin/rl-baselines3-zoo/-/commits/master) -->
 ![CI](https://github.com/DLR-RM/rl-baselines3-zoo/workflows/CI/badge.svg)
 [![Documentation Status](https://readthedocs.org/projects/rl-baselines3-zoo/badge/?version=master)](https://rl-baselines3-zoo.readthedocs.io/en/master/?badge=master)
