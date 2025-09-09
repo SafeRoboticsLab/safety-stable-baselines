@@ -48,9 +48,9 @@ def make_pendulum_safety(margin_deg: float = 30.0, render_mode=None):
     return env
 
 
-# Gym registration so you can call gym.make("SafetyPendulum-v1")
+_ENTRY_POINT_PATH = "rl_zoo3.safety_envs:make_pendulum_safety"
 register(
     id="SafetyPendulum-v1",
-    entry_point="safety_sb3.integrations.rl_zoo3.safety_envs.classic_control:make_pendulum_safety",
+    entry_point=_ENTRY_POINT_PATH,
     kwargs={"margin_deg": 30.0},
 )

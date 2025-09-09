@@ -1,5 +1,5 @@
 # To be tuned
-Pendulum-v1:
+SafetyPendulum-v1:
   # callback:
   #   - rl_zoo3.callbacks.ParallelTrainCallback
   n_timesteps: 20000

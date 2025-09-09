@@ -41,10 +41,10 @@ ALGOS: dict[str, type[BaseAlgorithm]] = {
     "trpo": TRPO,
     "ppo_lstm": RecurrentPPO,
     # Safety SB3,
-    "safeppo": SafetyPPO,
-    "safesac": SafetySAC,
-    "safea2c": SafetyA2C,
-    "safedqn": SafetyDQN,
+    "safetyppo": SafetyPPO,
+    "safetysac": SafetySAC,
+    "safetya2c": SafetyA2C,
+    "safetydqn": SafetyDQN,
 }
 
 
