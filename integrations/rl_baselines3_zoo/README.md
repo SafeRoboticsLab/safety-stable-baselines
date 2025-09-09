@@ -11,7 +11,7 @@
 
 Example run:
 ```
-python train.py --algo sac --env Pendulum-v1 --eval-freq 10000 --eval-episodes 10 --n-eval-envs 1 --track --wandb-project-name safety_sb3
+python train.py --algo safetysac --env SafetyPendulum-v1 --eval-freq 10000 --eval-episodes 10 --n-eval-envs 1 --track --wandb-project-name safety_sb3
 ```
 
 
