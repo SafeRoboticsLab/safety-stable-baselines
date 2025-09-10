@@ -1,18 +1,18 @@
 SafetyPendulum-v1:
   normalize: "{'norm_obs': True, 'norm_reward': True}"   # PPO: normalize rewards
   n_envs: 8
-  n_timesteps: 2_500_000
+  n_timesteps: 3_500_000
 
   policy: "MlpPolicy"
-  learning_rate: !!float 2e-4          # constant LR; you can try a linear schedule later
-  n_steps: 2048                        # per-env steps → rollout size = 2048 * 8 = 16384
-  batch_size: 2048                     # divisor of rollout size
+  learning_rate: !!float 1e-4          # constant LR; you can try a linear schedule later
+  n_steps: 4096                        # per-env steps → rollout size = 2048 * 8 = 16384
+  batch_size: 4096                     # divisor of rollout size
   n_epochs: 10                         # 10 passes over rollout
 
   gamma: 0.99
-  gae_lambda: 0.95
-  clip_range: 0.2
-  ent_coef: 0.01
+  gae_lambda: 0.9
+  clip_range: 0.1
+  ent_coef: 0.001
   vf_coef: 0.5
   max_grad_norm: 0.5
   target_kl: 0.02

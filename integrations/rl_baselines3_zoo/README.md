@@ -11,14 +11,26 @@
 
 Example training run:
 ```
-python train.py --algo safetysac --env SafetyPendulum-v1 --eval-freq 10000 --eval-episodes 10 --n-eval-envs 1 --track --wandb-project-name safety_sb3
+python train.py --algo safetysac --env SafetyPendulum-v1 --eval-freq 50000 --save-freq 50000 --eval-episodes 10 --n-eval-envs 1 --track --wandb-project-name safety_sb3
 ```
 
 Example eval (enjoy) run:
 ```
-python enjoy.py XXX (TODO: add safety filtering in enjoy)
+python enjoy.py --algo safetyppo --env SafetyPendulum-v1 -f logs/ --exp-id 11 --load-best
 ```
+See more [here](https://rl-baselines3-zoo.readthedocs.io/en/master/guide/enjoy.html)
 
+
+# WIP
+We are adding a safety filter mode that implements the following feature:
+1. In this special eval mode, it will load two trained models, a regular model and a safety model
+2. We will use the environment corresponding to the regular model
+3. In addition to the regular model and policy (everything remain unchanged), load the value network for safety filter, and use that to determine when to override the regular policy with the safety policy (V>epsilon: no need to override, where epsilon is a parameter)
+
+So the command would look something like:
+```
+python enjoy.py --algo ppo --safetyalgo safetyppo --env Pendulum-v1 -f logs/ --exp-id 11 --exp-id-safety 7 --load-best --epsilon 0.2
+```
 
 **The following is forked from RL Baselines3 Zoo: https://github.com/DLR-RM/stable-baselines3/commit/7883ed4d20bc9edf3a22a053c77b3146c518a937**
 
