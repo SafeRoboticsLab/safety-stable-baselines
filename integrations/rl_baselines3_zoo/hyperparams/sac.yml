@@ -17,7 +17,7 @@ MountainCarContinuous-v0:
 Pendulum-v1:
   # callback:
   #   - rl_zoo3.callbacks.ParallelTrainCallback
-  n_timesteps: 20000
+  n_timesteps: 200000
   policy: 'MlpPolicy'
   learning_rate: !!float 1e-3
 

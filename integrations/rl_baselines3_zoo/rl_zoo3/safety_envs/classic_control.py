@@ -41,6 +41,20 @@ class PendulumSafety(gym.Wrapper):
         # NOTE: reward is the safety margin
         return obs, float(g), terminated, truncated, info
 
+    def reset(self, **kwargs):
+        # Let base env reset
+        obs, info = self.env.reset(**kwargs)
+
+        # Sample theta within the safe cone
+        theta = float(self.env.unwrapped.np_random.uniform(-self.margin_rad, self.margin_rad))
+        theta_dot = float(self.env.unwrapped.np_random.uniform(-1, 1))
+
+        # Set true internal state and recompute observation
+        self.env.unwrapped.state = np.array([theta, theta_dot], dtype=np.float32)
+        obs = np.array([np.cos(theta), np.sin(theta), theta_dot], dtype=np.float32)
+
+        return obs, info
+
 
 def make_pendulum_safety(margin_deg: float = 30.0, render_mode=None):
     env = gym.make("Pendulum-v1", render_mode=render_mode)
@@ -48,9 +62,8 @@ def make_pendulum_safety(margin_deg: float = 30.0, render_mode=None):
     return env
 
 
-_ENTRY_POINT_PATH = "rl_zoo3.safety_envs:make_pendulum_safety"
 register(
     id="SafetyPendulum-v1",
-    entry_point=_ENTRY_POINT_PATH,
+    entry_point="rl_zoo3.safety_envs:make_pendulum_safety",
     kwargs={"margin_deg": 30.0},
 )

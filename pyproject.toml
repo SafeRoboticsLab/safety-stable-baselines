@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "safety-sb3"
+name = "safety_sb3"
 version = "0.1.0"
 description = "Safety RL add-on for Stable-Baselines3"
 readme = "README.md"

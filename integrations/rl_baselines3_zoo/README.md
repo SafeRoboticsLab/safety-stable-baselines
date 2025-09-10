@@ -6,12 +6,17 @@
 # Define a Safety Environment
 1. Write the safety wrapper and put it under rl_zoo3/safety_envs (see for example, `classic_control.py`)
 2. Make sure to register the new environment
-3. If you added a new file, update it in rl_zoo3/import_envs.py
+3. If you add a new file, update it in `safety_envs/__init__.py`
 
 
-Example run:
+Example training run:
 ```
 python train.py --algo safetysac --env SafetyPendulum-v1 --eval-freq 10000 --eval-episodes 10 --n-eval-envs 1 --track --wandb-project-name safety_sb3
+```
+
+Example eval (enjoy) run:
+```
+python enjoy.py XXX (TODO: add safety filtering in enjoy)
 ```
 
 

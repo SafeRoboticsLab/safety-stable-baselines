@@ -1,34 +1,17 @@
 # To be tuned
 SafetyPendulum-v1:
-  # callback:
-  #   - rl_zoo3.callbacks.ParallelTrainCallback
-  n_timesteps: 200000
+  normalize: "{'norm_obs': True, 'norm_reward': False}"
+  n_envs: 8
+  n_timesteps: 500_000
   policy: 'MlpPolicy'
-  learning_rate: !!float 1e-3
-
-
-CarRacing-v3:
-  env_wrapper:
-    - rl_zoo3.wrappers.FrameSkip:
-        skip: 2
-    # wrapper from https://github.com/araffin/aae-train-donkeycar
-    - ae.wrapper.AutoencoderWrapper:
-        ae_path: "logs/car_racing_rgb_160.pkl"
-    - rl_zoo3.wrappers.HistoryWrapper:
-        horizon: 2
-  # frame_stack: 4
-  normalize: True
-  n_envs: 2
-  n_timesteps: !!float 1e6
-  policy: 'MlpPolicy'
-  learning_rate: !!float 7.3e-4
-  buffer_size: 300000
-  batch_size: 256
-  ent_coef: 'auto'
-  gamma: 0.99
+  learning_rate: !!float 3e-4
+  buffer_size: 1_000_000
+  learning_starts: 10_000   # Give replay buffer time to warm up
+  batch_size: 512
   tau: 0.02
-  train_freq: 8
-  gradient_steps: 10
-  learning_starts: 1000
-  use_sde: True
-  use_sde_at_warmup: True
+  gamma: 0.99              # Slightly reduce discount for stability
+  train_freq: 1
+  gradient_steps: 4        # More Q-updates per sample → faster critic convergence
+  ent_coef: 'auto'
+  target_update_interval: 1
+  policy_kwargs: "dict(net_arch=dict(pi=[128,128], qf=[128,128]), activation_fn=nn.Tanh)"
