@@ -1,0 +1,38 @@
+diff --git a/safety_gymnasium/assets/geoms/sigwalls.py b/safety_gymnasium/assets/geoms/sigwalls.py
+index d1bde03..cbd96c9 100644
+--- a/safety_gymnasium/assets/geoms/sigwalls.py
++++ b/safety_gymnasium/assets/geoms/sigwalls.py
+@@ -112,3 +112,4 @@ class Sigwalls(Geom):  # pylint: disable=too-many-instance-attributes
+     @property
+     def pos(self):
+         """Helper to get list of Sigwalls positions."""
++        return [self.engine.data.body(f'{self.name[:-1]}{i}').xpos.copy() for i in range(self.num)]
+diff --git a/safety_gymnasium/tasks/safe_navigation/circle/circle_level0.py b/safety_gymnasium/tasks/safe_navigation/circle/circle_level0.py
+index bb0e720..b66bf96 100644
+--- a/safety_gymnasium/tasks/safe_navigation/circle/circle_level0.py
++++ b/safety_gymnasium/tasks/safe_navigation/circle/circle_level0.py
+@@ -31,12 +31,12 @@ class CircleLevel0(BaseTask):
+         self.agent.placements = [(-0.8, -0.8, 0.8, 0.8)]
+         self.agent.keepout = 0
+ 
+-        self.lidar_conf.max_dist = 6
++        self.lidar_conf.max_dist = 6.0
+ 
+         # Reward for circle goal (complicated formula depending on pos and vel)
+         self.reward_factor: float = 1e-1
+ 
+-        self._add_geoms(Circle())
++        self._add_geoms(Circle(is_lidar_observed=False))
+ 
+     def calculate_reward(self):
+         """The agent should loop around the boundary of circle."""
+diff --git a/safety_gymnasium/tasks/safe_navigation/circle/circle_level1.py b/safety_gymnasium/tasks/safe_navigation/circle/circle_level1.py
+index 3173fa6..5e888d7 100644
+--- a/safety_gymnasium/tasks/safe_navigation/circle/circle_level1.py
++++ b/safety_gymnasium/tasks/safe_navigation/circle/circle_level1.py
+@@ -24,4 +24,4 @@ class CircleLevel1(CircleLevel0):
+     def __init__(self, config) -> None:
+         super().__init__(config=config)
+ 
+-        self._add_geoms(Sigwalls(num=2, locate_factor=1.125, is_constrained=True))
++        self._add_geoms(Sigwalls(num=2, locate_factor=1.125, is_constrained=True, is_lidar_observed=True))  # pylint: disable=no-member
