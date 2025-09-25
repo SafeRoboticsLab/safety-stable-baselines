@@ -63,7 +63,4 @@ outputs
 assetto_corsa_gym.code-workspace
 
 .vscode/
-checkpoints/
-runs/
-logs/
-best/
+experiments/

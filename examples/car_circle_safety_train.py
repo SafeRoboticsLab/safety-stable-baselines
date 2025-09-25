@@ -18,10 +18,10 @@ from safety_sb3 import SafetySAC
 if __name__ == "__main__":
     # ---------- paths ----------
     run_name = f"SafetySAC_CarCircle2_{int(time.time())}"
-    logs_dir = "./runs"                # local TB logs (W&B will sync these)
-    ckpt_dir = "./checkpoints"         # periodic checkpoints
-    best_dir = "./best"                # best model from EvalCallback
-    final_dir = "./examples/models"    # final save at the end
+    logs_dir = f"./experiments/{run_name}/logs"
+    ckpt_dir = f"./experiments/{run_name}/checkpoints"
+    best_dir = f"./experiments/{run_name}/best"
+    final_dir = f"./experiments/{run_name}/final"
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(best_dir, exist_ok=True)
     os.makedirs(final_dir, exist_ok=True)
