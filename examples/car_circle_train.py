@@ -28,7 +28,8 @@ if __name__ == "__main__":
 
     # ---------- W&B ----------
     wandb_run = wandb.init(
-        project="safety-sb3",          # <-- change to your W&B project
+        project="safety_sb3",
+        entity="safe-princeton",
         name=run_name,
         config={
             "algo": "SafetySAC",

@@ -14,9 +14,34 @@ This repo provides:
 **Design principle: keep upstream SB3 untouched. This lives in a separate repo and still feels native to SB3 users.**
 
 ## Installation
+We need to enforce python 3.10 so that `safety-gymnasium` works.
+
 ```bash
+# Create conda env
+conda create --name safety_sb3 python=3.10
+conda activate safety_sb3
+
+# Install safety-sb3
 pip install -U torch stable-baselines3 gymnasium
 pip install -e .
+
+# Install rl_baselines3_zoo deps
+cd integrations/rl_baselines3_zoo
+pip install -e .
+```
+
+## safety-gymnasium
+Clone the original `safety-gymnasium` to `integrations` and apply patch
+
+```bash
+# clone the repo
+cd integrations
+git clone git@github.com:PKU-Alignment/safety-gymnasium.git
+cd safety-gymnasium
+pip install -e .
+
+# apply patch
+git apply ../../patches/safety-gymnasium.patch
 ```
 
 ## Quick start and example
