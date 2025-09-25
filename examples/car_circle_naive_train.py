@@ -1,7 +1,7 @@
 # train_sac_circle_wandb.py - Simple SAC training on original safety-gymnasium
 import os
 import sys
-import time
+import datetime
 import wandb
 import safety_gymnasium
 
@@ -9,14 +9,14 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
 from wandb.integration.sb3 import WandbCallback
+from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnCollisionWrapper
 
 # so imports work when running from /examples
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-
 if __name__ == "__main__":
     # ---------- paths ----------
-    run_name = f"SAC_CarCircle2_{int(time.time())}"
+    run_name = f"SafetySAC_CarCircle2_{datetime.now().strftime('%Y%m%d_%H%M')}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
     best_dir = f"./experiments/{run_name}/best"
@@ -47,11 +47,13 @@ if __name__ == "__main__":
     # ---------- env ----------
     # Use original safety-gymnasium environment directly
     env = safety_gymnasium.make("SafetyCarCircle2-v0")
+    env = TerminateOnCollisionWrapper(env)
     env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(env)
     env = Monitor(env)
 
     # Separate eval env
     eval_env = safety_gymnasium.make("SafetyCarCircle2-v0")
+    eval_env = TerminateOnCollisionWrapper(eval_env)
     eval_env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(eval_env)
     eval_env = Monitor(eval_env)
 

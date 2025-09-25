@@ -10,6 +10,7 @@ import time
 import safety_gymnasium
 
 from stable_baselines3 import SAC
+from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnCollisionWrapper
 
 # Add parent directory to path if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,6 +33,7 @@ def replay_sac_model(model_path: str, env_id: str = "SafetyCarCircle2-v0",
     
     # Create original safety-gymnasium environment with rendering
     env = safety_gymnasium.make(env_id, render_mode="human")
+    env = TerminateOnCollisionWrapper(env)
     env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(env)
     
     # Load the trained SAC model

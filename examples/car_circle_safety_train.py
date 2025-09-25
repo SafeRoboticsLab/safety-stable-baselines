@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+from datetime import datetime
 import wandb
 
 from stable_baselines3.common.monitor import Monitor
@@ -17,7 +18,7 @@ from safety_sb3 import SafetySAC
 
 if __name__ == "__main__":
     # ---------- paths ----------
-    run_name = f"SafetySAC_CarCircle2_{int(time.time())}"
+    run_name = f"SafetySAC_CarCircle2_{datetime.now().strftime('%Y%m%d_%H%M')}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
     best_dir = f"./experiments/{run_name}/best"

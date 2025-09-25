@@ -1,7 +1,7 @@
 # train_sac_circle_with_safety_filter.py - SAC training with SafetySAC safety filter
 import os
 import sys
-import time
+import datetime
 import wandb
 import safety_gymnasium
 import numpy as np
@@ -11,6 +11,7 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
 from wandb.integration.sb3 import WandbCallback
+from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnCollisionWrapper
 
 # so imports work when running from /examples
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -185,7 +186,7 @@ if __name__ == "__main__":
     # ---------- paths ----------
     # Include epsilon in run name for easy identification
     epsilon_str = f"eps{EPSILON:+.3f}".replace(".", "p").replace("-", "m").replace("+", "p")
-    run_name = f"SAC_CarCircle2_WithFilter_{epsilon_str}_{int(time.time())}"
+    run_name = f"SAC_CarCircle2_WithFilter_{epsilon_str}_{datetime.now().strftime('%Y%m%d_%H%M')}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
     best_dir = f"./experiments/{run_name}/best"
@@ -229,6 +230,7 @@ if __name__ == "__main__":
     # ---------- env ----------
     # Create base environment
     base_env = safety_gymnasium.make("SafetyCarCircle2-v0")
+    base_env = TerminateOnCollisionWrapper(base_env)
     base_env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(base_env)
     
     # Add observation storing wrapper first
@@ -240,6 +242,7 @@ if __name__ == "__main__":
 
     # Separate eval env with same safety filter
     base_eval_env = safety_gymnasium.make("SafetyCarCircle2-v0")
+    base_eval_env = TerminateOnCollisionWrapper(base_eval_env)
     base_eval_env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(base_eval_env)
     obs_storing_eval_env = ObservationStoringWrapper(base_eval_env)
     eval_env = SafetyFilterWrapper(obs_storing_eval_env, safety_model_path, epsilon=EPSILON)
