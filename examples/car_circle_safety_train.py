@@ -17,8 +17,14 @@ from safety_sb3 import SafetySAC
 
 
 if __name__ == "__main__":
+    # ---------- configuration ----------
+    # Experiment identifier - add suffix/prefix to distinguish experiment sets
+    # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
+    EXP_SUFFIX = ""  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    
     # ---------- paths ----------
-    run_name = f"SafetySAC_CarCircle2_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    base_run_name = "SafetySAC_CarCircle2"
+    run_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}_{base_run_name}_{EXP_SUFFIX}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
     best_dir = f"./experiments/{run_name}/best"
@@ -35,10 +41,11 @@ if __name__ == "__main__":
         config={
             "algo": "SafetySAC",
             "env_id": "SafetyCarCircle2-v0",
-            "safety_clearance": 0.5,
-            "total_timesteps": 100_000,
-            "lr": 3e-4,
-            "buffer_size": 100_000,
+            "safety_clearance": 0.01,
+            "exp_suffix": EXP_SUFFIX,
+            "total_timesteps": 200_000,
+            "lr": 1e-4,
+            "buffer_size": 200_000,
             "batch_size": 256,
             "gamma": 0.995,
             "tau": 0.01,
@@ -49,20 +56,20 @@ if __name__ == "__main__":
 
     # ---------- env ----------
     # NOTE: SB3 auto-wraps with Monitor, but we do it explicitly so episodic stats are guaranteed.
-    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.5)
+    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.01)
     env = Monitor(env)  # ensures episodic reward/length are logged
 
     # Separate eval env (no render)
-    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.5)
+    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.01)
     eval_env = Monitor(eval_env)
 
     # ---------- model ----------
     model = SafetySAC(
         policy="MlpPolicy",
         env=env,
-        learning_rate=3e-4,
-        buffer_size=100_000,
-        learning_starts=5_000,
+        learning_rate=1e-4,
+        buffer_size=200_000,
+        learning_starts=10_000,
         batch_size=256,
         tau=0.01,
         gamma=0.995,                 # safety discount
@@ -108,7 +115,7 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=100_000,
+        total_timesteps=200_000,
         callback=callbacks,
         tb_log_name=run_name,       # TB run group name (appears in W&B)
         log_interval=10,            # print/log every 10 train calls

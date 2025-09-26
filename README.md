@@ -14,12 +14,16 @@ This repo provides:
 **Design principle: keep upstream SB3 untouched. This lives in a separate repo and still feels native to SB3 users.**
 
 ## Installation
-We need to enforce python 3.10 so that `safety-gymnasium` works.
+We need to enforce python 3.10 so that `safety-gymnasium` works. This repository includes [`safety-gymnasium` from Safe Robotics Lab (forked from original)](https://github.com/SafeRoboticsLab/safety-gymnasium) as a git submodule, configured to track the `safety_sb3` branch.
 
 ```bash
 # Create conda env
 conda create --name safety_sb3 python=3.10
 conda activate safety_sb3
+
+# Clone this repo with submodules
+git clone --recurse-submodules git@github.com:SafeRoboticsLab/safety-stable-baselines.git
+cd safety-stable-baselines
 
 # Install safety-sb3
 pip install -U torch stable-baselines3 gymnasium
@@ -28,20 +32,16 @@ pip install -e .
 # Install rl_baselines3_zoo deps
 cd integrations/rl_baselines3_zoo
 pip install -e .
+
+# Install safety-gymnasium
+cd integrations/safety-gymnasium
+pip install -e .
 ```
 
-## safety-gymnasium
-Clone the original `safety-gymnasium` to `integrations` and apply patch
-
+### To update safety-gymnasium later:
 ```bash
-# clone the repo
-cd integrations
-git clone git@github.com:PKU-Alignment/safety-gymnasium.git
-cd safety-gymnasium
-pip install -e .
-
-# apply patch
-git apply ../../patches/safety-gymnasium.patch
+# Update submodule to latest commit on safety_sb3 branch
+git submodule update --remote integrations/safety-gymnasium
 ```
 
 ## Quick start and example

@@ -1,7 +1,7 @@
 # train_sac_circle_with_safety_filter.py - SAC training with SafetySAC safety filter
 import os
 import sys
-import datetime
+from datetime import datetime
 import wandb
 import safety_gymnasium
 import numpy as np
@@ -9,7 +9,7 @@ import torch
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
+from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList, BaseCallback
 from wandb.integration.sb3 import WandbCallback
 from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnCollisionWrapper
 
@@ -17,6 +17,104 @@ from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnColli
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from safety_sb3.safety_sac import SafetySAC
+
+
+class SafetyFilterLoggingCallback(BaseCallback):
+    """
+    Custom callback to log safety violations and filter statistics to wandb and tensorboard.
+    Tracks both cost violations and safety filter interventions.
+    """
+    
+    def __init__(self, verbose=0):
+        super(SafetyFilterLoggingCallback, self).__init__(verbose)
+        self.episode_costs = []
+        self.episode_violations = []
+        self.episode_interventions = []
+        self.episode_avg_margins = []
+        
+        self.current_episode_cost = 0
+        self.current_episode_violations = 0
+        self.current_episode_interventions = 0
+        self.current_episode_margins = []
+        
+        # Track total violations and interventions from start to finish
+        self.total_violations = 0
+        self.total_interventions = 0
+        
+    def _on_step(self) -> bool:
+        # Extract info from the last step
+        if len(self.locals.get('infos', [])) > 0:
+            info = self.locals['infos'][0]  # Get info from first environment
+            
+            # Track cost from safety-gymnasium
+            if 'cost' in info:
+                cost = info['cost']
+                self.current_episode_cost += cost
+                if cost > 0:
+                    self.current_episode_violations += 1
+                    self.total_violations += 1  # Increment total violations counter
+            
+            # Track safety filter statistics
+            if 'action_filtered' in info and info['action_filtered']:
+                self.current_episode_interventions += 1
+                self.total_interventions += 1  # Increment total interventions counter
+                
+            if 'safety_margin' in info:
+                self.current_episode_margins.append(info['safety_margin'])
+                
+            # Log real-time filter statistics
+            if 'intervention_rate' in info:
+                self.logger.record("filter/intervention_rate", info['intervention_rate'])
+        
+        # Check if episode is done
+        dones = self.locals.get('dones', [])
+        if len(dones) > 0 and dones[0]:  # Episode finished
+            # Store episode statistics
+            self.episode_costs.append(self.current_episode_cost)
+            self.episode_violations.append(self.current_episode_violations)
+            self.episode_interventions.append(self.current_episode_interventions)
+            
+            # Calculate average margin for episode
+            if len(self.current_episode_margins) > 0:
+                avg_margin = np.mean(self.current_episode_margins)
+                min_margin = np.min(self.current_episode_margins)
+                self.episode_avg_margins.append(avg_margin)
+            else:
+                avg_margin = 0
+                min_margin = 0
+            
+            # Log episode statistics to tensorboard and wandb
+            self.logger.record("safety/episode_cost", self.current_episode_cost)
+            self.logger.record("safety/episode_violations", self.current_episode_violations)
+            self.logger.record("safety/total_violations", self.total_violations)  # Log cumulative total violations
+            self.logger.record("filter/episode_interventions", self.current_episode_interventions)
+            self.logger.record("filter/total_interventions", self.total_interventions)  # Log cumulative total interventions
+            self.logger.record("filter/episode_avg_margin", avg_margin)
+            self.logger.record("filter/episode_min_margin", min_margin)
+            
+            # Log cumulative statistics (last 100 episodes)
+            if len(self.episode_costs) > 0:
+                avg_cost = np.mean(self.episode_costs[-100:])
+                avg_violations = np.mean(self.episode_violations[-100:])
+                avg_interventions = np.mean(self.episode_interventions[-100:])
+                violation_rate = np.mean([1 if v > 0 else 0 for v in self.episode_violations[-100:]])
+                
+                self.logger.record("safety/avg_episode_cost_100", avg_cost)
+                self.logger.record("safety/avg_episode_violations_100", avg_violations)
+                self.logger.record("safety/violation_rate_100", violation_rate)
+                self.logger.record("filter/avg_episode_interventions_100", avg_interventions)
+                
+                if len(self.episode_avg_margins) > 0:
+                    avg_margin_100 = np.mean(self.episode_avg_margins[-100:])
+                    self.logger.record("filter/avg_margin_100", avg_margin_100)
+            
+            # Reset for next episode
+            self.current_episode_cost = 0
+            self.current_episode_violations = 0
+            self.current_episode_interventions = 0
+            self.current_episode_margins = []
+            
+        return True
 
 
 class SafetyFilterWrapper:
@@ -181,12 +279,17 @@ if __name__ == "__main__":
     # epsilon < 0: only filter when margin < epsilon (less conservative)
     
     # test different values: 0.15, 0.1, 0.05, 0.0, -0.05, -0.1, -0.15
-    EPSILON = -0.15
+    EPSILON = 0.3
+    
+    # Experiment identifier - add suffix/prefix to distinguish experiment sets
+    # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
+    EXP_SUFFIX = ""  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
     # Include epsilon in run name for easy identification
     epsilon_str = f"eps{EPSILON:+.3f}".replace(".", "p").replace("-", "m").replace("+", "p")
-    run_name = f"SAC_CarCircle2_WithFilter_{epsilon_str}_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    base_run_name = f"SAC_CarCircle2_WithFilter_{epsilon_str}"
+    run_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}_{base_run_name}_{EXP_SUFFIX}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
     best_dir = f"./experiments/{run_name}/best"
@@ -197,7 +300,7 @@ if __name__ == "__main__":
 
     # Path to trained SafetySAC model
     # Update this path to point to your trained SafetySAC model
-    safety_model_path = "./experiments/SafetySAC_CarCircle2_1758776721/final/car_circle2.zip"
+    safety_model_path = "./experiments/SafetySAC_CarCircle2_20250926_1341/final/car_circle2.zip"
     
     # Check if safety model exists
     if not os.path.exists(safety_model_path):
@@ -216,11 +319,12 @@ if __name__ == "__main__":
             "env_id": "SafetyCarCircle2-v0",
             "safety_model_path": safety_model_path,
             "epsilon": EPSILON,
-            "total_timesteps": 100_000,
-            "lr": 3e-4,
+            "exp_suffix": EXP_SUFFIX,
+            "total_timesteps": 300_000,
+            "lr": 1e-4,
             "buffer_size": 100_000,
             "batch_size": 256,
-            "gamma": 0.99,
+            "gamma": 0.995,
             "tau": 0.01,
         },
         sync_tensorboard=True,
@@ -253,16 +357,16 @@ if __name__ == "__main__":
     model = SAC(
         policy="MlpPolicy",
         env=env,
-        learning_rate=3e-4,
+        learning_rate=1e-4,
         buffer_size=100_000,
-        learning_starts=5_000,
+        learning_starts=10_000,
         batch_size=256,
         tau=0.01,
-        gamma=0.99,
+        gamma=0.995,
         train_freq=(1, "step"),
         gradient_steps=1,
         ent_coef="auto",
-        seed=0,
+        seed=856,
         device="auto",
         verbose=1,
         tensorboard_log=logs_dir,
@@ -294,11 +398,14 @@ if __name__ == "__main__":
         verbose=2,
     )
 
-    callbacks = CallbackList([eval_cb, ckpt_cb, wb_cb])
+    # Safety filter logging callback
+    safety_filter_cb = SafetyFilterLoggingCallback(verbose=1)
+
+    callbacks = CallbackList([eval_cb, ckpt_cb, wb_cb, safety_filter_cb])
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=100_000,
+        total_timesteps=300_000,
         callback=callbacks,
         tb_log_name=run_name,
         log_interval=10,

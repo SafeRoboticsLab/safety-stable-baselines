@@ -1,0 +1,4 @@
+[submodule "integrations/safety-gymnasium"]
+	path = integrations/safety-gymnasium
+	url = git@github.com:SafeRoboticsLab/safety-gymnasium.git
+	branch = safety_sb3
