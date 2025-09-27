@@ -41,10 +41,10 @@ if __name__ == "__main__":
         config={
             "algo": "SafetySAC",
             "env_id": "SafetyCarCircle2-v0",
-            "safety_clearance": 0.01,
+            "safety_clearance": 0.0,
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 200_000,
-            "lr": 1e-4,
+            "total_timesteps": 500_000,
+            "lr": 1e-5,
             "buffer_size": 200_000,
             "batch_size": 256,
             "gamma": 0.995,
@@ -56,18 +56,18 @@ if __name__ == "__main__":
 
     # ---------- env ----------
     # NOTE: SB3 auto-wraps with Monitor, but we do it explicitly so episodic stats are guaranteed.
-    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.01)
+    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.0)
     env = Monitor(env)  # ensures episodic reward/length are logged
 
     # Separate eval env (no render)
-    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.01)
+    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.0)
     eval_env = Monitor(eval_env)
 
     # ---------- model ----------
     model = SafetySAC(
         policy="MlpPolicy",
         env=env,
-        learning_rate=1e-4,
+        learning_rate=1e-5,
         buffer_size=200_000,
         learning_starts=10_000,
         batch_size=256,
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         best_model_save_path=best_dir,
         log_path=best_dir,
         eval_freq=10_000,           # eval every N steps
-        n_eval_episodes=10,
+        n_eval_episodes=20,
         deterministic=True,
         render=False,
     )
@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=200_000,
+        total_timesteps=500_000,
         callback=callbacks,
         tb_log_name=run_name,       # TB run group name (appears in W&B)
         log_interval=10,            # print/log every 10 train calls

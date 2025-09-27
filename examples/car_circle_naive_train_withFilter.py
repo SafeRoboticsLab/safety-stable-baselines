@@ -178,12 +178,14 @@ class SafetyFilterWrapper:
             # Get Q-value from SafetySAC critic
             # Note: SafetySAC has safety critic that outputs margin values
             # q > 0 means safe (positive margin), q <= 0 means unsafe (negative margin)
+            
+            # SafetySAC critic expects separate observation and action arguments
             q_value = self.safety_model.critic(obs_tensor, action_tensor)
             
             # For SafetySAC, the critic outputs the margin g(s,a)
-            # We use the first critic (if there are multiple) and take mean if needed
+            # We use the minimum of both critics for conservative safety decisions
             if isinstance(q_value, tuple):
-                q_value = q_value[0]  # Take first critic
+                q_value = torch.min(q_value[0], q_value[1])  # Take minimum of both critics (conservative)
             
             safety_margin = q_value.cpu().numpy().item()
         
@@ -283,7 +285,7 @@ if __name__ == "__main__":
     
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = ""  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EXP_SUFFIX = "lr1em5"  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
     # Include epsilon in run name for easy identification
@@ -300,7 +302,7 @@ if __name__ == "__main__":
 
     # Path to trained SafetySAC model
     # Update this path to point to your trained SafetySAC model
-    safety_model_path = "./experiments/SafetySAC_CarCircle2_20250926_1341/final/car_circle2.zip"
+    safety_model_path = "./experiments/20250926_1953_SafetySAC_CarCircle2_lr1em5/final/car_circle2.zip"
     
     # Check if safety model exists
     if not os.path.exists(safety_model_path):
@@ -320,11 +322,11 @@ if __name__ == "__main__":
             "safety_model_path": safety_model_path,
             "epsilon": EPSILON,
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 300_000,
-            "lr": 1e-4,
+            "total_timesteps": 500_000,
+            "lr": 3e-4,
             "buffer_size": 100_000,
             "batch_size": 256,
-            "gamma": 0.995,
+            "gamma": 0.99,
             "tau": 0.01,
         },
         sync_tensorboard=True,
@@ -357,16 +359,16 @@ if __name__ == "__main__":
     model = SAC(
         policy="MlpPolicy",
         env=env,
-        learning_rate=1e-4,
+        learning_rate=3e-4,
         buffer_size=100_000,
         learning_starts=10_000,
         batch_size=256,
         tau=0.01,
-        gamma=0.995,
+        gamma=0.99,
         train_freq=(1, "step"),
         gradient_steps=1,
         ent_coef="auto",
-        seed=856,
+        seed=0,
         device="auto",
         verbose=1,
         tensorboard_log=logs_dir,
@@ -405,7 +407,7 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=300_000,
+        total_timesteps=500_000,
         callback=callbacks,
         tb_log_name=run_name,
         log_interval=10,
