@@ -1,4 +1,3 @@
-# train_ppo_circle_wandb.py - Simple PPO training on original safety-gymnasium
 import os
 import sys
 from datetime import datetime

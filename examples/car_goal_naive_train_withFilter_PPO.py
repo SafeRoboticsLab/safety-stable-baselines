@@ -6,9 +6,10 @@ import safety_gymnasium
 import numpy as np
 import torch
 
-from stable_baselines3 import SAC
+from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList, BaseCallback
+from stable_baselines3.common.vec_env import DummyVecEnv
 from wandb.integration.sb3 import WandbCallback
 from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnCollisionWrapper
 
@@ -280,16 +281,16 @@ if __name__ == "__main__":
     # epsilon < 0: only filter when margin < epsilon (less conservative)
     
     # test different values: 0.15, 0.1, 0.05, 0.0, -0.05, -0.1, -0.15
-    EPSILON = 0.1
+    EPSILON = 0.0
     
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = "lr1em5"  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EXP_SUFFIX = "lr1em5_1M"  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
     # Include epsilon in run name for easy identification
     epsilon_str = f"eps{EPSILON:+.3f}".replace(".", "p").replace("-", "m").replace("+", "p")
-    base_run_name = f"SAC_CarCircle2_WithFilter_{epsilon_str}"
+    base_run_name = f"PPO_CarGoal2_WithFilter_{epsilon_str}"
     run_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}_{base_run_name}_{EXP_SUFFIX}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
@@ -301,12 +302,12 @@ if __name__ == "__main__":
 
     # Path to trained SafetySAC model
     # Update this path to point to your trained SafetySAC model
-    safety_model_path = "./experiments/20250926_1953_SafetySAC_CarCircle2_lr1em5/final/car_circle2.zip"
+    safety_model_path = "./experiments/20250929_0138_SafetySAC_CarGoal2_lr1em5_1M/final/car_goal2.zip"
     
     # Check if safety model exists
     if not os.path.exists(safety_model_path):
         print(f"Error: SafetySAC model not found at {safety_model_path}")
-        print("Please train a SafetySAC model first using car_circle_safety_train.py")
+        print("Please train a SafetySAC model first using car_goal_safety_train.py")
         print("Or update the safety_model_path to point to your trained model.")
         sys.exit(1)
 
@@ -316,25 +317,29 @@ if __name__ == "__main__":
         entity="safe-princeton",
         name=run_name,
         config={
-            "algo": "SAC_with_SafetyFilter",
-            "env_id": "SafetyCarCircle2-v0",
+            "algo": "PPO_with_SafetyFilter",
+            "env_id": "SafetyCarGoal2-v0",
             "safety_model_path": safety_model_path,
             "epsilon": EPSILON,
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 500_000,
+            "total_timesteps": 400_000,  # PPO typically needs more timesteps
             "lr": 3e-4,
-            "buffer_size": 100_000,
-            "batch_size": 256,
+            "n_steps": 2048,  # Steps per rollout
+            "batch_size": 64,  # Minibatch size
+            "n_epochs": 10,    # Number of epochs per update
             "gamma": 0.99,
-            "tau": 0.01,
+            "gae_lambda": 0.95,
+            "clip_range": 0.2,
+            "ent_coef": 0.01,  # Entropy coefficient
         },
         sync_tensorboard=True,
         save_code=True,
     )
 
     # ---------- env ----------
+    # PPO works better with vectorized environments
     # Create base environment
-    base_env = safety_gymnasium.make("SafetyCarCircle2-v0")
+    base_env = safety_gymnasium.make("SafetyCarGoal2-v0")
     base_env = TerminateOnCollisionWrapper(base_env)
     base_env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(base_env)
     
@@ -344,29 +349,32 @@ if __name__ == "__main__":
     # Add safety filter wrapper
     env = SafetyFilterWrapper(obs_storing_env, safety_model_path, epsilon=EPSILON)
     env = Monitor(env)
+    env = DummyVecEnv([lambda: env])  # Vectorize for PPO
 
-    # Separate eval env with same safety filter
-    base_eval_env = safety_gymnasium.make("SafetyCarCircle2-v0")
+    # Separate eval env with same safety filter (also vectorized)
+    base_eval_env = safety_gymnasium.make("SafetyCarGoal2-v0")
     base_eval_env = TerminateOnCollisionWrapper(base_eval_env)
     base_eval_env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(base_eval_env)
     obs_storing_eval_env = ObservationStoringWrapper(base_eval_env)
     eval_env = SafetyFilterWrapper(obs_storing_eval_env, safety_model_path, epsilon=EPSILON)
     eval_env = Monitor(eval_env)
+    eval_env = DummyVecEnv([lambda: eval_env])  # Vectorize for PPO
 
     # ---------- model ----------
-    # Standard SAC (same as naive training)
-    model = SAC(
+    # Standard PPO (same as naive training) with SafetySAC safety filter
+    model = PPO(
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
-        buffer_size=100_000,
-        learning_starts=10_000,
-        batch_size=256,
-        tau=0.01,
+        n_steps=2048,        # Number of steps to run for each environment per update
+        batch_size=64,       # Minibatch size
+        n_epochs=10,         # Number of epoch when optimizing the surrogate loss
         gamma=0.99,
-        train_freq=(1, "step"),
-        gradient_steps=1,
-        ent_coef="auto",
+        gae_lambda=0.95,     # Factor for trade-off of bias vs variance for Generalized Advantage Estimator
+        clip_range=0.2,      # Clipping parameter for PPO
+        ent_coef=0.01,       # Entropy coefficient for the loss calculation
+        vf_coef=0.5,         # Value function coefficient for the loss calculation
+        max_grad_norm=0.5,   # Maximum value for the gradient clipping
         seed=0,
         device="auto",
         verbose=1,
@@ -385,10 +393,10 @@ if __name__ == "__main__":
     )
 
     ckpt_cb = CheckpointCallback(
-        save_freq=10_000,
+        save_freq=20_000,    # Save more frequently for PPO (every ~25 updates with 2048 steps)
         save_path=ckpt_dir,
-        name_prefix="sac_car_circle2_withfilter",
-        save_replay_buffer=True,
+        name_prefix="ppo_car_goal2_withfilter",
+        save_replay_buffer=False,  # PPO doesn't use replay buffer
         save_vecnormalize=False,
     )
 
@@ -406,16 +414,16 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=500_000,
+        total_timesteps=400_000,  # PPO typically needs more timesteps than SAC
         callback=callbacks,
         tb_log_name=run_name,
         log_interval=10,
     )
 
     # ---------- final save ----------
-    final_path = os.path.join(final_dir, f"car_circle2_sac_withfilter_{epsilon_str}")
+    final_path = os.path.join(final_dir, f"car_goal2_ppo_withfilter_{epsilon_str}")
     model.save(final_path)
-    print(f"Training complete! Saved final SAC+Filter (ε={EPSILON}) model to {final_path}.zip")
+    print(f"Training complete! Saved final PPO+Filter (ε={EPSILON}) model to {final_path}.zip")
 
     # ---------- tidy up ----------
     env.close()

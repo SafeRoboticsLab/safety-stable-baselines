@@ -1,4 +1,3 @@
-# train_ppo_circle_with_safety_filter.py - PPO training with SafetySAC safety filter
 import os
 import sys
 from datetime import datetime

@@ -8,7 +8,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
 from wandb.integration.sb3 import WandbCallback  # syncs TB logs + optional model checkpoints
 
-from safety_gymnasium.safety_envs.safety_circle_margin import make_env
+from safety_gymnasium.safety_envs.safety_goal_margin import make_env
 
 # so "from safety_sb3 import SafetySAC" works when running from /examples
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,10 +19,10 @@ if __name__ == "__main__":
     # ---------- configuration ----------
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = ""  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EXP_SUFFIX = "lr1em5_1M"  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
-    base_run_name = "SafetySAC_CarCircle2"
+    base_run_name = "SafetySAC_CarGoal2"
     run_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}_{base_run_name}_{EXP_SUFFIX}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
@@ -39,10 +39,10 @@ if __name__ == "__main__":
         name=run_name,
         config={
             "algo": "SafetySAC",
-            "env_id": "SafetyCarCircle2-v0",
+            "env_id": "SafetyCarGoal2-v0",
             "safety_clearance": 0.0,
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 500_000,
+            "total_timesteps": 1_000_000,
             "lr": 1e-5,
             "buffer_size": 200_000,
             "batch_size": 256,
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         env=env,
         learning_rate=1e-5,
         buffer_size=200_000,
-        learning_starts=10_000,
+        learning_starts=20_000,
         batch_size=256,
         tau=0.01,
         gamma=0.995,                 # safety discount
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     ckpt_cb = CheckpointCallback(
         save_freq=10_000,           # save every N steps
         save_path=ckpt_dir,
-        name_prefix="safety_sac_car_circle2",
+        name_prefix="safety_sac_car_goal2",
         save_replay_buffer=True,    # useful for resuming
         save_vecnormalize=False,
     )
@@ -114,14 +114,14 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=500_000,
+        total_timesteps=1_000_000,
         callback=callbacks,
         tb_log_name=run_name,       # TB run group name (appears in W&B)
         log_interval=10,            # print/log every 10 train calls
     )
 
     # ---------- final save ----------
-    final_path = os.path.join(final_dir, "car_circle2")
+    final_path = os.path.join(final_dir, "car_goal2")
     model.save(final_path)
     print(f"Training complete! Saved final SafetySAC model to {final_path}.zip")
 
