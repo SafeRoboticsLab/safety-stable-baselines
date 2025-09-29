@@ -261,7 +261,7 @@ def main():
                         help="Agent type")
     parser.add_argument("--level", "-l", type=int, default=2, choices=[0, 1, 2],
                         help="Circle environment level")
-    parser.add_argument("--safety-clearance", "-s", type=float, default=0.5,
+    parser.add_argument("--safety-clearance", "-s", type=float, default=0.0,
                         help="Safety clearance in meters")
     parser.add_argument("--episodes", "-e", type=int, default=5,
                         help="Number of episodes to run")
