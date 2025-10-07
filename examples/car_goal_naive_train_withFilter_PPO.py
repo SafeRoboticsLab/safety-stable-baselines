@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime
+import argparse
 import wandb
 import safety_gymnasium
 import numpy as np
@@ -198,7 +199,7 @@ class SafetyFilterWrapper:
         else:
             # Unsafe action - use SafetySAC actor instead
             with torch.no_grad():
-                safe_action, _ = self.safety_model.predict(current_obs, deterministic=False)
+                safe_action, _ = self.safety_model.predict(current_obs, deterministic=True)
                 final_action = safe_action
             
             self.safety_interventions += 1
@@ -274,18 +275,30 @@ class ObservationStoringWrapper:
 
 
 if __name__ == "__main__":
+    # ---------- argument parsing ----------
+    parser = argparse.ArgumentParser(description="Train PPO with SafetySAC safety filter")
+    parser.add_argument("--epsilon", type=float, default=0.0,
+                        help="Safety filter threshold. Higher values = more conservative filtering. "
+                             "epsilon=0.0: only filter when margin <= 0 (unsafe), "
+                             "epsilon>0: filter when margin <= epsilon (more conservative), "
+                             "epsilon<0: only filter when margin < epsilon (less conservative)")
+    parser.add_argument("--exp-suffix", type=str, default="",
+                        help="Experiment identifier suffix for distinguishing experiment sets")
+    parser.add_argument("--safety-model-path", type=str, 
+                        default="./experiments/20250930_1226_SafetySAC_CarGoal2_sigwall_lr1em5/best/best_model.zip",
+                        help="Path to trained SafetySAC model for safety filtering")
+    parser.add_argument("--total-timesteps", type=int, default=1_000_000,
+                        help="Total training timesteps")
+    parser.add_argument("--lr", type=float, default=3e-4,
+                        help="Learning rate")
+    
+    args = parser.parse_args()
+    
     # ---------- configuration ----------
-    # Safety filter threshold - higher values = more conservative filtering
-    # epsilon = 0.0: only filter when margin <= 0 (unsafe)
-    # epsilon > 0: filter when margin <= epsilon (more conservative)
-    # epsilon < 0: only filter when margin < epsilon (less conservative)
-    
-    # test different values: 0.15, 0.1, 0.05, 0.0, -0.05, -0.1, -0.15
-    EPSILON = 0.0
-    
-    # Experiment identifier - add suffix/prefix to distinguish experiment sets
-    # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = "lr1em5_1M"  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EPSILON = args.epsilon
+    EXP_SUFFIX = args.exp_suffix
+    TOTAL_TIMESTEPS = args.total_timesteps
+    LEARNING_RATE = args.lr
     
     # ---------- paths ----------
     # Include epsilon in run name for easy identification
@@ -301,8 +314,7 @@ if __name__ == "__main__":
     os.makedirs(final_dir, exist_ok=True)
 
     # Path to trained SafetySAC model
-    # Update this path to point to your trained SafetySAC model
-    safety_model_path = "./experiments/20250929_0138_SafetySAC_CarGoal2_lr1em5_1M/final/car_goal2.zip"
+    safety_model_path = args.safety_model_path
     
     # Check if safety model exists
     if not os.path.exists(safety_model_path):
@@ -322,8 +334,8 @@ if __name__ == "__main__":
             "safety_model_path": safety_model_path,
             "epsilon": EPSILON,
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 400_000,  # PPO typically needs more timesteps
-            "lr": 3e-4,
+            "total_timesteps": TOTAL_TIMESTEPS,
+            "lr": LEARNING_RATE,
             "n_steps": 2048,  # Steps per rollout
             "batch_size": 64,  # Minibatch size
             "n_epochs": 10,    # Number of epochs per update
@@ -365,7 +377,7 @@ if __name__ == "__main__":
     model = PPO(
         policy="MlpPolicy",
         env=env,
-        learning_rate=3e-4,
+        learning_rate=LEARNING_RATE,
         n_steps=2048,        # Number of steps to run for each environment per update
         batch_size=64,       # Minibatch size
         n_epochs=10,         # Number of epoch when optimizing the surrogate loss
@@ -414,7 +426,7 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=400_000,  # PPO typically needs more timesteps than SAC
+        total_timesteps=TOTAL_TIMESTEPS,
         callback=callbacks,
         tb_log_name=run_name,
         log_interval=10,

@@ -90,21 +90,21 @@ def replay_model(model_path: str, agent: str = "Car", level: int = 2,
             min_margin = float('inf')
             q_values = []  # Track Q-values throughout the episode
 
-            # Keyboard input to choose initial state
-            print(f"   Initial state loaded for episode {episode + 1}")
-            print(f"   Press 'r' + Enter to reset and try a different initial state")
-            print(f"   Press any other key + Enter to run this episode")
+            # # Keyboard input to choose initial state
+            # print(f"   Initial state loaded for episode {episode + 1}")
+            # print(f"   Press 'r' + Enter to reset and try a different initial state")
+            # print(f"   Press any other key + Enter to run this episode")
             
-            try:
-                user_input = input("Your choice: ").strip().lower()
-                if user_input == 'r':
-                    print("   Resetting to get a different initial state...")
-                    continue  # Skip to next iteration of for loop
-                else:
-                    print("   Running this episode...")
-            except KeyboardInterrupt:
-                print(f"\n   Replay interrupted by user")
-                return
+            # try:
+            #     user_input = input("Your choice: ").strip().lower()
+            #     if user_input == 'r':
+            #         print("   Resetting to get a different initial state...")
+            #         continue  # Skip to next iteration of for loop
+            #     else:
+            #         print("   Running this episode...")
+            # except KeyboardInterrupt:
+            #     print(f"\n   Replay interrupted by user")
+            #     return
             
             while True:
                 # Get action from trained model

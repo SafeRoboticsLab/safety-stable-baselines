@@ -77,7 +77,7 @@ if __name__ == "__main__":
     # ---------- configuration ----------
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_baseline", "_v2", etc.
-    EXP_SUFFIX = ""  # Set to "" for no suffix, or e.g. "_baseline" for identification
+    EXP_SUFFIX = "pillar_single"  # Set to "" for no suffix, or e.g. "_baseline" for identification
     
     # ---------- paths ----------
     base_run_name = "PPO_CarCircle2"
@@ -99,7 +99,7 @@ if __name__ == "__main__":
             "algo": "PPO",
             "env_id": "SafetyCarCircle2-v0",
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 2_000_000,  # PPO typically needs more timesteps
+            "total_timesteps": 400_000,  # PPO typically needs more timesteps
             "lr": 3e-4,
             "n_steps": 2048,  # Steps per rollout
             "batch_size": 64,  # Minibatch size
@@ -181,7 +181,7 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=2_000_000,  # PPO typically needs more timesteps than SAC
+        total_timesteps=400_000,  # PPO typically needs more timesteps than SAC
         callback=callbacks,
         tb_log_name=run_name,
         log_interval=10,

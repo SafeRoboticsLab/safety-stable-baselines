@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # ---------- configuration ----------
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = "lr1em5_1M"  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EXP_SUFFIX = "sigwall_lr1em5"  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
     base_run_name = "SafetySAC_CarGoal2"
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         config={
             "algo": "SafetySAC",
             "env_id": "SafetyCarGoal2-v0",
-            "safety_clearance": 0.0,
+            "safety_clearance": 0.10,
             "exp_suffix": EXP_SUFFIX,
             "total_timesteps": 1_000_000,
             "lr": 1e-5,
@@ -55,11 +55,11 @@ if __name__ == "__main__":
 
     # ---------- env ----------
     # NOTE: SB3 auto-wraps with Monitor, but we do it explicitly so episodic stats are guaranteed.
-    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.0)
+    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.10)
     env = Monitor(env)  # ensures episodic reward/length are logged
 
     # Separate eval env (no render)
-    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.0)
+    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.10)
     eval_env = Monitor(eval_env)
 
     # ---------- model ----------

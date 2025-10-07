@@ -90,7 +90,7 @@ def replay_model(model_path: str, agent: str = "Car", level: int = 2,
             print(f"   Episode {episode + 1}/{num_episodes}")
             
             obs, info = env.reset()
-            # env.render()
+            env.render()
             episode_reward = 0.0
             episode_steps = 0
             safety_violations = 0

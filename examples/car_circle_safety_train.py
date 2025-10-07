@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # ---------- configuration ----------
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = ""  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EXP_SUFFIX = "2M"  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
     base_run_name = "SafetySAC_CarCircle2"
@@ -40,9 +40,9 @@ if __name__ == "__main__":
         config={
             "algo": "SafetySAC",
             "env_id": "SafetyCarCircle2-v0",
-            "safety_clearance": 0.0,
+            "safety_clearance": 0.02,
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 500_000,
+            "total_timesteps": 2_000_000,
             "lr": 1e-5,
             "buffer_size": 200_000,
             "batch_size": 256,
@@ -55,11 +55,11 @@ if __name__ == "__main__":
 
     # ---------- env ----------
     # NOTE: SB3 auto-wraps with Monitor, but we do it explicitly so episodic stats are guaranteed.
-    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.0)
+    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.02)
     env = Monitor(env)  # ensures episodic reward/length are logged
 
     # Separate eval env (no render)
-    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.0)
+    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.02)
     eval_env = Monitor(eval_env)
 
     # ---------- model ----------
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         env=env,
         learning_rate=1e-5,
         buffer_size=200_000,
-        learning_starts=10_000,
+        learning_starts=20_000,
         batch_size=256,
         tau=0.01,
         gamma=0.995,                 # safety discount
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=500_000,
+        total_timesteps=2_000_000,
         callback=callbacks,
         tb_log_name=run_name,       # TB run group name (appears in W&B)
         log_interval=10,            # print/log every 10 train calls
