@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime
+import argparse
 import wandb
 import safety_gymnasium
 import numpy as np
@@ -74,11 +75,17 @@ class SafetyLoggingCallback(BaseCallback):
         return True
 
 if __name__ == "__main__":
-    # ---------- configuration ----------
-    # Experiment identifier - add suffix/prefix to distinguish experiment sets
-    # Examples: "_test1", "_ablation", "_final", "_baseline", "_v2", etc.
-    EXP_SUFFIX = "pillar_single"  # Set to "" for no suffix, or e.g. "_baseline" for identification
-    
+    # ---------- argument parsing ----------
+    parser = argparse.ArgumentParser(description="Train PPO on CarCircle2 (naive, no safety filter)")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--exp-suffix", type=str, default="pillar_single", help="Experiment identifier suffix for distinguishing experiment sets")
+    parser.add_argument("--total-timesteps", type=int, default=400_000, help="Total training timesteps")
+    args = parser.parse_args()
+
+    SEED = args.seed
+    EXP_SUFFIX = args.exp_suffix
+    TOTAL_TIMESTEPS = args.total_timesteps
+
     # ---------- paths ----------
     base_run_name = "PPO_CarCircle2"
     run_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}_{base_run_name}_{EXP_SUFFIX}"
@@ -99,50 +106,49 @@ if __name__ == "__main__":
             "algo": "PPO",
             "env_id": "SafetyCarCircle2-v0",
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 400_000,  # PPO typically needs more timesteps
+            "total_timesteps": TOTAL_TIMESTEPS,
             "lr": 3e-4,
-            "n_steps": 2048,  # Steps per rollout
-            "batch_size": 64,  # Minibatch size
-            "n_epochs": 10,    # Number of epochs per update
+            "n_steps": 2048,
+            "batch_size": 64,
+            "n_epochs": 10,
             "gamma": 0.99,
             "gae_lambda": 0.95,
             "clip_range": 0.2,
-            "ent_coef": 0.01,  # Entropy coefficient
+            "ent_coef": 0.01,
+            "seed": SEED,
         },
         sync_tensorboard=True,
         save_code=True,
     )
 
     # ---------- env ----------
-    # PPO works better with vectorized environments
     env = safety_gymnasium.make("SafetyCarCircle2-v0")
     env = TerminateOnCollisionWrapper(env)
     env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(env)
     env = Monitor(env)
-    env = DummyVecEnv([lambda: env])  # Vectorize for PPO
+    env = DummyVecEnv([lambda: env])
 
-    # Separate eval env (also vectorized)
     eval_env = safety_gymnasium.make("SafetyCarCircle2-v0")
     eval_env = TerminateOnCollisionWrapper(eval_env)
     eval_env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(eval_env)
     eval_env = Monitor(eval_env)
-    eval_env = DummyVecEnv([lambda: eval_env])  # Vectorize for PPO
+    eval_env = DummyVecEnv([lambda: eval_env])
 
     # ---------- model ----------
     model = PPO(
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
-        n_steps=2048,        # Number of steps to run for each environment per update
-        batch_size=64,       # Minibatch size
-        n_epochs=10,         # Number of epoch when optimizing the surrogate loss
+        n_steps=2048,
+        batch_size=64,
+        n_epochs=10,
         gamma=0.99,
-        gae_lambda=0.95,     # Factor for trade-off of bias vs variance for Generalized Advantage Estimator
-        clip_range=0.2,      # Clipping parameter for PPO
-        ent_coef=0.01,       # Entropy coefficient for the loss calculation
-        vf_coef=0.5,         # Value function coefficient for the loss calculation
-        max_grad_norm=0.5,   # Maximum value for the gradient clipping
-        seed=0,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.01,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        seed=SEED,
         device="auto",
         verbose=1,
         tensorboard_log=logs_dir,
@@ -160,10 +166,10 @@ if __name__ == "__main__":
     )
 
     ckpt_cb = CheckpointCallback(
-        save_freq=50_000,    # Save more frequently for PPO (every ~25 updates with 2048 steps)
+        save_freq=50_000,
         save_path=ckpt_dir,
         name_prefix="ppo_car_circle2",
-        save_replay_buffer=False,  # PPO doesn't use replay buffer
+        save_replay_buffer=False,
         save_vecnormalize=False,
     )
 
@@ -174,14 +180,13 @@ if __name__ == "__main__":
         verbose=2,
     )
 
-    # Safety logging callback
     safety_cb = SafetyLoggingCallback(verbose=1)
 
     callbacks = CallbackList([eval_cb, ckpt_cb, wb_cb, safety_cb])
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=400_000,  # PPO typically needs more timesteps than SAC
+        total_timesteps=TOTAL_TIMESTEPS,
         callback=callbacks,
         tb_log_name=run_name,
         log_interval=10,

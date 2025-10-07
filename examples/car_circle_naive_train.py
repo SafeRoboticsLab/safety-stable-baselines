@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime
+import argparse
 import wandb
 import safety_gymnasium
 import numpy as np
@@ -73,11 +74,17 @@ class SafetyLoggingCallback(BaseCallback):
         return True
 
 if __name__ == "__main__":
-    # ---------- configuration ----------
-    # Experiment identifier - add suffix/prefix to distinguish experiment sets
-    # Examples: "_test1", "_ablation", "_final", "_baseline", "_v2", etc.
-    EXP_SUFFIX = ""  # Set to "" for no suffix, or e.g. "_baseline" for identification
-    
+    # ---------- argument parsing ----------
+    parser = argparse.ArgumentParser(description="Train SAC on CarCircle2 (naive, no safety filter)")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--exp-suffix", type=str, default="", help="Experiment identifier suffix for distinguishing experiment sets")
+    parser.add_argument("--total-timesteps", type=int, default=500_000, help="Total training timesteps")
+    args = parser.parse_args()
+
+    SEED = args.seed
+    EXP_SUFFIX = args.exp_suffix
+    TOTAL_TIMESTEPS = args.total_timesteps
+
     # ---------- paths ----------
     base_run_name = "SAC_CarCircle2"
     run_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}_{base_run_name}_{EXP_SUFFIX}"
@@ -98,25 +105,24 @@ if __name__ == "__main__":
             "algo": "SAC",
             "env_id": "SafetyCarCircle2-v0",
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 500_000,
+            "total_timesteps": TOTAL_TIMESTEPS,
             "lr": 3e-4,
             "buffer_size": 100_000,
             "batch_size": 256,
             "gamma": 0.99,
             "tau": 0.01,
+            "seed": SEED,
         },
         sync_tensorboard=True,
         save_code=True,
     )
 
     # ---------- env ----------
-    # Use original safety-gymnasium environment directly
     env = safety_gymnasium.make("SafetyCarCircle2-v0")
     env = TerminateOnCollisionWrapper(env)
     env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(env)
     env = Monitor(env)
 
-    # Separate eval env
     eval_env = safety_gymnasium.make("SafetyCarCircle2-v0")
     eval_env = TerminateOnCollisionWrapper(eval_env)
     eval_env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(eval_env)
@@ -135,7 +141,7 @@ if __name__ == "__main__":
         train_freq=(1, "step"),
         gradient_steps=1,
         ent_coef="auto",
-        seed=0,
+        seed=SEED,
         device="auto",
         verbose=1,
         tensorboard_log=logs_dir,
@@ -167,14 +173,13 @@ if __name__ == "__main__":
         verbose=2,
     )
 
-    # Safety logging callback
     safety_cb = SafetyLoggingCallback(verbose=1)
 
     callbacks = CallbackList([eval_cb, ckpt_cb, wb_cb, safety_cb])
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=500_000,
+        total_timesteps=TOTAL_TIMESTEPS,
         callback=callbacks,
         tb_log_name=run_name,
         log_interval=10,

@@ -251,7 +251,7 @@ class SafetyRolloutFilter:
             # If episode ended, consider it safe if no violation occurred
             if rollout_terminated or rollout_truncated:
                 if verbose: print("1, timeout")
-                return True, 1
+                return False, 1
             
             # Step 2: Continue rollout for H-1 steps using safety policy
             for rollout_step in range(2, self.horizon + 1):
@@ -275,7 +275,7 @@ class SafetyRolloutFilter:
                 # If episode ended naturally, consider it safe
                 if rollout_terminated or rollout_truncated:
                     if verbose: print(f"{rollout_step}, timeout")
-                    return True, rollout_step
+                    return False, rollout_step
             
             # If we completed the full horizon without violations, it's safe
             if verbose: print(f"{self.horizon}, safe")
