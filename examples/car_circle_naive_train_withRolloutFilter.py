@@ -442,6 +442,9 @@ if __name__ == "__main__":
                         help="Total training timesteps")
     parser.add_argument("--lr", type=float, default=3e-4,
                         help="Learning rate")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Random seed")
+
     
     args = parser.parse_args()
     
@@ -451,6 +454,7 @@ if __name__ == "__main__":
     EXP_SUFFIX = args.exp_suffix
     TOTAL_TIMESTEPS = args.total_timesteps
     LEARNING_RATE = args.lr
+    SEED = args.seed
     
     # ---------- paths ----------
     base_run_name = f"SAC_CarCircle2_WithRolloutFilter_h{HORIZON}_vt{VELOCITY_THRESHOLD}"
@@ -490,6 +494,7 @@ if __name__ == "__main__":
             "buffer_size": 100_000,
             "batch_size": 256,
             "gamma": 0.99,
+            "seed": SEED,
             "tau": 0.01,
         },
         sync_tensorboard=True,

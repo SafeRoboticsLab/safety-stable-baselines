@@ -291,6 +291,8 @@ if __name__ == "__main__":
                         help="Total training timesteps")
     parser.add_argument("--lr", type=float, default=3e-4,
                         help="Learning rate")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Random seed")
     
     args = parser.parse_args()
     
@@ -299,6 +301,7 @@ if __name__ == "__main__":
     EXP_SUFFIX = args.exp_suffix
     TOTAL_TIMESTEPS = args.total_timesteps
     LEARNING_RATE = args.lr
+    SEED = args.seed
     
     # ---------- paths ----------
     # Include epsilon in run name for easy identification
@@ -343,6 +346,7 @@ if __name__ == "__main__":
             "gae_lambda": 0.95,
             "clip_range": 0.2,
             "ent_coef": 0.01,  # Entropy coefficient
+            "seed": SEED,
         },
         sync_tensorboard=True,
         save_code=True,
@@ -387,7 +391,7 @@ if __name__ == "__main__":
         ent_coef=0.01,       # Entropy coefficient for the loss calculation
         vf_coef=0.5,         # Value function coefficient for the loss calculation
         max_grad_norm=0.5,   # Maximum value for the gradient clipping
-        seed=0,
+        seed=SEED,
         device="auto",
         verbose=1,
         tensorboard_log=logs_dir,

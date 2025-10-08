@@ -290,6 +290,8 @@ if __name__ == "__main__":
                         help="Total training timesteps")
     parser.add_argument("--lr", type=float, default=3e-4,
                         help="Learning rate")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Random seed")
     
     args = parser.parse_args()
     
@@ -298,6 +300,7 @@ if __name__ == "__main__":
     EXP_SUFFIX = args.exp_suffix
     TOTAL_TIMESTEPS = args.total_timesteps
     LEARNING_RATE = args.lr
+    SEED = args.seed
     
     # ---------- paths ----------
     # Include epsilon in run name for easy identification
@@ -339,6 +342,7 @@ if __name__ == "__main__":
             "batch_size": 256,
             "gamma": 0.99,
             "tau": 0.01,
+            "seed": SEED,
         },
         sync_tensorboard=True,
         save_code=True,
@@ -379,7 +383,7 @@ if __name__ == "__main__":
         train_freq=(1, "step"),
         gradient_steps=1,
         ent_coef="auto",
-        seed=0,
+        seed=SEED,
         device="auto",
         verbose=1,
         tensorboard_log=logs_dir,

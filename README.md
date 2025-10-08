@@ -26,7 +26,7 @@ git clone --recurse-submodules git@github.com:SafeRoboticsLab/safety-stable-base
 cd safety-stable-baselines
 
 # Install safety-sb3
-pip install -U torch stable-baselines3 gymnasium
+pip install -U torch stable-baselines3 gymnasium wandb tensorboard
 pip install -e .
 
 # Install rl_baselines3_zoo deps
