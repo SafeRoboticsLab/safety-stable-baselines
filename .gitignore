@@ -64,3 +64,9 @@ assetto_corsa_gym.code-workspace
 
 .vscode/
 experiments/
+
+*.tar.gz
+*.zip
+*.tar
+*.rar
+*.7z
