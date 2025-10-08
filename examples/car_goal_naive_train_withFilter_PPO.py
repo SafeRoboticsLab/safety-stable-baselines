@@ -285,7 +285,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp-suffix", type=str, default="",
                         help="Experiment identifier suffix for distinguishing experiment sets")
     parser.add_argument("--safety-model-path", type=str, 
-                    default="./experiments/20251008_0050_SafetySAC_CarGoal1_Pillar_2M/checkpoints/safety_sac_car_goal1_pillar_1600000_steps.zip",
+                        default="./experiments/20251008_0050_SafetySAC_CarGoal1_Pillar_2M/final/car_goal1_pillar.zip",
                         help="Path to trained SafetySAC model for safety filtering")
     parser.add_argument("--total-timesteps", type=int, default=1_000_000,
                         help="Total training timesteps")

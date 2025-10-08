@@ -147,9 +147,8 @@ def main():
     parser = argparse.ArgumentParser(description="Replay a trained SAC model on safety-gymnasium")
     parser.add_argument("--model", "-m", type=str, required=True,
                         help="Path to the trained SAC model file (.zip)")
-    parser.add_argument("--env", type=str, default="SafetyCarGoal2-v0",
-                        choices=["SafetyCarGoal1-v0", "SafetyCarGoal2-v0", 
-                                "SafetyPointGoal1-v0", "SafetyPointGoal2-v0"],
+    parser.add_argument("--env", type=str, default="SafetyCarGoal1-v0",
+                        choices=["SafetyCarGoal1-v0", "SafetyCarGoal2-v0"],
                         help="Safety-gymnasium environment ID")
     parser.add_argument("--episodes", "-e", type=int, default=5,
                         help="Number of episodes to run")
