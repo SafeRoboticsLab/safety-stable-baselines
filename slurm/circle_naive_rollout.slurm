@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=circle_value_array
+#SBATCH --job-name=circle_rollout_array
 
 #SBATCH --nodes=1                               # node count
 #SBATCH --ntasks=1                              # total number of tasks across all nodes
