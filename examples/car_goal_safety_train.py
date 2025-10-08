@@ -19,10 +19,10 @@ if __name__ == "__main__":
     # ---------- configuration ----------
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = "sigwall_lr1em5"  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EXP_SUFFIX = "2M"  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
-    base_run_name = "SafetySAC_CarGoal2"
+    base_run_name = "SafetySAC_CarGoal1_Pillar"
     run_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}_{base_run_name}_{EXP_SUFFIX}"
     logs_dir = f"./experiments/{run_name}/logs"
     ckpt_dir = f"./experiments/{run_name}/checkpoints"
@@ -39,10 +39,10 @@ if __name__ == "__main__":
         name=run_name,
         config={
             "algo": "SafetySAC",
-            "env_id": "SafetyCarGoal2-v0",
-            "safety_clearance": 0.10,
+            "env_id": "SafetyCarGoal1-v0",
+            "safety_clearance": 0.02,
             "exp_suffix": EXP_SUFFIX,
-            "total_timesteps": 1_000_000,
+            "total_timesteps": 2_000_000,
             "lr": 1e-5,
             "buffer_size": 200_000,
             "batch_size": 256,
@@ -55,11 +55,11 @@ if __name__ == "__main__":
 
     # ---------- env ----------
     # NOTE: SB3 auto-wraps with Monitor, but we do it explicitly so episodic stats are guaranteed.
-    env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.10)
+    env = make_env(agent="Car", level=1, render_mode=None, safety_clearance=0.02)
     env = Monitor(env)  # ensures episodic reward/length are logged
 
     # Separate eval env (no render)
-    eval_env = make_env(agent="Car", level=2, render_mode=None, safety_clearance=0.10)
+    eval_env = make_env(agent="Car", level=1, render_mode=None, safety_clearance=0.02)
     eval_env = Monitor(eval_env)
 
     # ---------- model ----------
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     ckpt_cb = CheckpointCallback(
         save_freq=10_000,           # save every N steps
         save_path=ckpt_dir,
-        name_prefix="safety_sac_car_goal2",
+        name_prefix="safety_sac_car_goal1_pillar",
         save_replay_buffer=True,    # useful for resuming
         save_vecnormalize=False,
     )
@@ -114,14 +114,14 @@ if __name__ == "__main__":
 
     # ---------- train ----------
     model.learn(
-        total_timesteps=1_000_000,
+        total_timesteps=2_000_000,
         callback=callbacks,
         tb_log_name=run_name,       # TB run group name (appears in W&B)
         log_interval=10,            # print/log every 10 train calls
     )
 
     # ---------- final save ----------
-    final_path = os.path.join(final_dir, "car_goal2")
+    final_path = os.path.join(final_dir, "car_goal1_pillar")
     model.save(final_path)
     print(f"Training complete! Saved final SafetySAC model to {final_path}.zip")
 
