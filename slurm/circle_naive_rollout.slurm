@@ -15,6 +15,16 @@ echo "My SLURM_ARRAY_JOB_ID is $SLURM_ARRAY_JOB_ID."
 echo "My SLURM_ARRAY_TASK_ID is $SLURM_ARRAY_TASK_ID"
 echo "Executing on the machine:" $(hostname)
 
+echo $CUDA_VISIBLE_DEVICES
+source $HOME/.bashrc
+JOBID=$SLURM_JOB_ID
+cd $WORKDIR
+mkdir -p safety_sb3-experiments
+cd safety_sb3-experiments
+mkdir -p safety_sb3_$JOBID/
+cd safety_sb3_$JOBID/
+cp -r $HOME/SAFE/safety-stable-baselines/* .
+
 module purge
 module load anaconda3/2025.6
 conda activate safety_sb3
