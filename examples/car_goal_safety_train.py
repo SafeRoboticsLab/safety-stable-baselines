@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # ---------- configuration ----------
     # Experiment identifier - add suffix/prefix to distinguish experiment sets
     # Examples: "_test1", "_ablation", "_final", "_geometric", "_v2", etc.
-    EXP_SUFFIX = "2M"  # Set to "" for no suffix, or e.g. "_geometric" for identification
+    EXP_SUFFIX = "2M_retrain"  # Set to "" for no suffix, or e.g. "_geometric" for identification
     
     # ---------- paths ----------
     base_run_name = "SafetySAC_CarGoal1_Pillar"

@@ -158,11 +158,11 @@ class SafetyRolloutFilter:
         print(f"RolloutFilter configured: horizon={horizon}, velocity_threshold={velocity_threshold}")
         print("Dedicated rollout environment created for efficient state copying")
         
-    def _get_safe_action(self, obs):
+    def _get_safe_action(self, obs, use_fallback=False):
         """
         Fallback policy: if velocity < threshold, return zero action; else, use safety policy.
         """
-        if self._is_velocity_safe(obs):
+        if use_fallback and self._is_velocity_safe(obs):
             return np.zeros(self.action_space.shape, dtype=np.float32)
         else:
             with torch.no_grad():
@@ -281,7 +281,7 @@ class SafetyRolloutFilter:
                     if verbose: print(f"{rollout_step}, timeout")
                     return False, rollout_step
             if verbose: print(f"{self.horizon}, timeout")
-            return False, self.horizon
+            return True, self.horizon
         except Exception as e:
             print(f"Error during rollout safety check: {e}")
             # In case of error, be conservative and reject the action

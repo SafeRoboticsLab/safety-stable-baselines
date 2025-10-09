@@ -45,7 +45,7 @@ def replay_model(model_path: str, agent: str = "Car", level: int = 2,
     # Create environment with rendering
     env = make_env(
         agent=agent, 
-        level=2, 
+        level=level, 
         render_mode="human", 
         safety_clearance=safety_clearance
     )
