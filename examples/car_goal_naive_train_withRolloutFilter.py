@@ -158,6 +158,17 @@ class SafetyRolloutFilter:
         print(f"RolloutFilter configured: horizon={horizon}, velocity_threshold={velocity_threshold}")
         print("Dedicated rollout environment created for efficient state copying")
         
+    def _get_safe_action(self, obs):
+        """
+        Fallback policy: if velocity < threshold, return zero action; else, use safety policy.
+        """
+        if self._is_velocity_safe(obs):
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+        else:
+            with torch.no_grad():
+                safe_action, _ = self.safety_model.predict(obs, deterministic=True)
+            return safe_action
+
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
         # Store initial observation immediately for rollout filter
@@ -188,11 +199,7 @@ class SafetyRolloutFilter:
             # Safe action - use proposed action
             final_action = action
         else:
-            # Unsafe action - use SafetySAC actor instead
-            with torch.no_grad():
-                safe_action, _ = self.safety_model.predict(current_obs, deterministic=True)
-                final_action = safe_action
-            
+            final_action = self._get_safe_action(current_obs)
             self.safety_interventions += 1
             
         # Step environment with filtered action
@@ -253,15 +260,12 @@ class SafetyRolloutFilter:
                 if verbose: print("1, timeout")
                 return False, 1
             
-            # Step 2: Continue rollout for H-1 steps using safety policy
+            # Step 2: Continue rollout for H-1 steps using safety action
             for rollout_step in range(2, self.horizon + 1):
-                # Get safe action from safety policy
-                with torch.no_grad():
-                    safety_action, _ = self.safety_model.predict(rollout_obs, deterministic=True)
-                
+                safe_action = self._get_safe_action(rollout_obs)
                 # Take step with safety policy
-                rollout_obs, rollout_reward, rollout_terminated, rollout_truncated, rollout_info = self.rollout_env.step(safety_action)
-                
+                rollout_obs, rollout_reward, rollout_terminated, rollout_truncated, rollout_info = self.rollout_env.step(safe_action)
+
                 # Check for violation during rollout
                 if self._has_violation(rollout_info):
                     if verbose: print(f"{rollout_step}, violation")
@@ -276,11 +280,8 @@ class SafetyRolloutFilter:
                 if rollout_terminated or rollout_truncated:
                     if verbose: print(f"{rollout_step}, timeout")
                     return False, rollout_step
-            
-            # If we completed the full horizon without violations, it's safe
-            if verbose: print(f"{self.horizon}, safe")
-            return True, self.horizon
-            
+            if verbose: print(f"{self.horizon}, timeout")
+            return False, self.horizon
         except Exception as e:
             print(f"Error during rollout safety check: {e}")
             # In case of error, be conservative and reject the action
