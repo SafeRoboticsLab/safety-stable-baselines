@@ -281,7 +281,8 @@ class SafetyRolloutFilter:
                     if verbose: print(f"{rollout_step}, timeout")
                     return False, rollout_step
             if verbose: print(f"{self.horizon}, timeout")
-            return True, self.horizon
+            #! NOTE: Might be too conservative if using avoid-only safety training
+            return False, self.horizon
         except Exception as e:
             print(f"Error during rollout safety check: {e}")
             # In case of error, be conservative and reject the action
@@ -437,7 +438,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp-suffix", type=str, default="",
                         help="Experiment identifier suffix for distinguishing experiment sets")
     parser.add_argument("--safety-model-path", type=str, 
-                        default="./experiments/20251008_0050_SafetySAC_CarGoal1_Pillar_2M/final/car_goal1_pillar.zip",
+                        default="./experiments/20251009_1240_SafetySAC_CarGoal1_Pillar_2M_retrain/final/car_goal1_pillar.zip",
                         help="Path to trained SafetySAC model for safety policy")
     parser.add_argument("--total-timesteps", type=int, default=1_000_000,
                         help="Total training timesteps")
