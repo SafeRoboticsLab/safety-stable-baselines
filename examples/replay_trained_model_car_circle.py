@@ -8,6 +8,7 @@ import sys
 import argparse
 import time
 import numpy as np
+import torch
 
 from safety_gymnasium.safety_envs.safety_circle_margin import make_env
 from safety_gymnasium.safety_envs.fixed_position_wrapper import (
@@ -19,6 +20,133 @@ from safety_gymnasium.safety_envs.fixed_position_wrapper import (
 # Add parent directory to path so we can import safety_sb3
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from safety_sb3 import SafetySAC
+
+
+def print_model_architecture(model, env):
+    """
+    Print detailed architecture information of the SafetySAC model.
+    
+    Args:
+        model: Trained SafetySAC model
+        env: Environment (for getting observation/action space info)
+    """
+    print("\n" + "="*80)
+    print("SAFETY SAC MODEL ARCHITECTURE INFORMATION")
+    print("="*80)
+    
+    # Input/Output shapes
+    print("\nINPUT/OUTPUT SHAPES:")
+    print(f"   Observation space: {env.observation_space}")
+    print(f"   Observation shape: {env.observation_space.shape}")
+    print(f"   Observation dimension: {env.observation_space.shape[0]}")
+    print(f"   Action space: {env.action_space}")
+    print(f"   Action shape: {env.action_space.shape}")
+    print(f"   Action dimension: {env.action_space.shape[0]}")
+    
+    # Actor network
+    print("\nACTOR NETWORK (Policy):")
+    print(f"   Type: {type(model.actor).__name__}")
+    print(f"   Input dim: {env.observation_space.shape[0]}")
+    print(f"   Output dim: {env.action_space.shape[0]} (mean and log_std)")
+    
+    if hasattr(model.actor, 'latent_pi'):
+        print(f"\n   Latent Policy Network:")
+        for i, layer in enumerate(model.actor.latent_pi):
+            if hasattr(layer, 'in_features') and hasattr(layer, 'out_features'):
+                print(f"      Layer {i}: Linear({layer.in_features} -> {layer.out_features})")
+            else:
+                print(f"      Layer {i}: {layer}")
+    
+    if hasattr(model.actor, 'mu'):
+        print(f"   Mean output layer: {model.actor.mu}")
+    if hasattr(model.actor, 'log_std'):
+        print(f"   Log std output layer: {model.actor.log_std}")
+    
+    # Critic network (Q-function)
+    print("\nCRITIC NETWORK (Q-function):")
+    print(f"   Type: {type(model.critic).__name__}")
+    print(f"   Number of critics: {model.critic.n_critics if hasattr(model.critic, 'n_critics') else 'N/A'}")
+    print(f"   Input dim: {env.observation_space.shape[0]} (obs) + {env.action_space.shape[0]} (action)")
+    print(f"   Output dim: 1 (Q-value)")
+    
+    if hasattr(model.critic, 'q_networks') and len(model.critic.q_networks) > 0:
+        print(f"\n   Q-Network 1:")
+        for i, layer in enumerate(model.critic.q_networks[0]):
+            if hasattr(layer, 'in_features') and hasattr(layer, 'out_features'):
+                print(f"      Layer {i}: Linear({layer.in_features} -> {layer.out_features})")
+            else:
+                print(f"      Layer {i}: {layer}")
+        
+        if len(model.critic.q_networks) > 1:
+            print(f"\n   Q-Network 2 (same architecture)")
+    
+    # Safety Critic network (if available)
+    if hasattr(model, 'safety_critic'):
+        print("\nSAFETY CRITIC NETWORK (Cost Q-function):")
+        print(f"   Type: {type(model.safety_critic).__name__}")
+        print(f"   Number of critics: {model.safety_critic.n_critics if hasattr(model.safety_critic, 'n_critics') else 'N/A'}")
+        print(f"   Input dim: {env.observation_space.shape[0]} (obs) + {env.action_space.shape[0]} (action)")
+        print(f"   Output dim: 1 (Cost Q-value)")
+        
+        if hasattr(model.safety_critic, 'q_networks') and len(model.safety_critic.q_networks) > 0:
+            print(f"\n   Cost Q-Network 1:")
+            for i, layer in enumerate(model.safety_critic.q_networks[0]):
+                if hasattr(layer, 'in_features') and hasattr(layer, 'out_features'):
+                    print(f"      Layer {i}: Linear({layer.in_features} -> {layer.out_features})")
+                else:
+                    print(f"      Layer {i}: {layer}")
+            
+            if len(model.safety_critic.q_networks) > 1:
+                print(f"\n   Cost Q-Network 2 (same architecture)")
+    
+    # Policy kwargs
+    print("\nPOLICY CONFIGURATION:")
+    if hasattr(model, 'policy_kwargs') and model.policy_kwargs:
+        for key, value in model.policy_kwargs.items():
+            print(f"   {key}: {value}")
+    else:
+        print("   Using default configuration")
+    
+    # Additional SafetySAC parameters
+    print("\nTRAINING PARAMETERS:")
+    print(f"   Learning rate: {model.learning_rate}")
+    print(f"   Buffer size: {model.buffer_size}")
+    print(f"   Batch size: {model.batch_size}")
+    print(f"   Gamma (discount): {model.gamma}")
+    print(f"   Tau (soft update): {model.tau}")
+    if hasattr(model, 'ent_coef'):
+        ent_coef = model.ent_coef
+        if isinstance(ent_coef, torch.Tensor):
+            ent_coef = ent_coef.item()
+        print(f"   Entropy coefficient: {ent_coef}")
+    
+    # Safety-specific parameters
+    if hasattr(model, 'safety_gamma'):
+        print(f"   Safety gamma: {model.safety_gamma}")
+    if hasattr(model, 'safety_budget'):
+        print(f"   Safety budget: {model.safety_budget}")
+    if hasattr(model, 'lambda_lr'):
+        print(f"   Lambda learning rate: {model.lambda_lr}")
+    if hasattr(model, 'lagrangian_multiplier'):
+        lambda_val = model.lagrangian_multiplier
+        if isinstance(lambda_val, torch.Tensor):
+            lambda_val = lambda_val.item()
+        print(f"   Current Lagrangian multiplier: {lambda_val:.6f}")
+    
+    # Total parameters
+    total_params = sum(p.numel() for p in model.policy.parameters())
+    trainable_params = sum(p.numel() for p in model.policy.parameters() if p.requires_grad)
+    
+    if hasattr(model, 'safety_critic'):
+        safety_params = sum(p.numel() for p in model.safety_critic.parameters())
+        total_params += safety_params
+        trainable_params += sum(p.numel() for p in model.safety_critic.parameters() if p.requires_grad)
+    
+    print(f"\nTOTAL PARAMETERS:")
+    print(f"   Total: {total_params:,}")
+    print(f"   Trainable: {trainable_params:,}")
+    
+    print("="*80 + "\n")
 
 
 def replay_model(model_path: str, agent: str = "Car", level: int = 2, 
@@ -60,9 +188,13 @@ def replay_model(model_path: str, agent: str = "Car", level: int = 2,
     # Load the trained model
     try:
         model = SafetySAC.load(model_path, env=env)
-        print(f"✓ Successfully loaded SafetySAC model")
+        print(f"Successfully loaded SafetySAC model")
+        
+        # Print architecture information
+        print_model_architecture(model, env)
+        
     except Exception as e:
-        print(f"✗ Failed to load model: {e}")
+        print(f"Failed to load model: {e}")
         print("Make sure the model path is correct and the model was saved properly.")
         return
     
