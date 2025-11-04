@@ -24,6 +24,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from wrappers.observation_storing_wrapper import ObservationStoringWrapper
 from wrappers.safety_rollout_filter_wrapper import SafetyRolloutFilter
 from wrappers.safety_value_filter_wrapper import SafetyFilterWrapper
+from wrappers.video_recording_wrapper import VideoRecordingWrapper
 
 
 def print_model_architecture(model, env):
@@ -119,7 +120,9 @@ def replay_sac_model(model_path: str, env_id: str = "SafetyCarCircle2-v0",
                      num_episodes: int = 5, deterministic: bool = True, 
                      step_delay: float = 0.02, filter_mode: str = "none",
                      safety_model_path: str = None, filter_epsilon: float = 0.0,
-                     rollout_horizon: int = 10, rollout_velocity_threshold: float = 0.1):
+                     rollout_horizon: int = 10, rollout_velocity_threshold: float = 0.1,
+                     record_video: bool = False, video_folder: str = "./videos",
+                     video_fps: int = 30, video_camera: str = None):
     """
     Load and replay a trained SAC model with optional safety filters.
     
@@ -134,11 +137,22 @@ def replay_sac_model(model_path: str, env_id: str = "SafetyCarCircle2-v0",
         filter_epsilon: Safety margin threshold for value filter
         rollout_horizon: Rollout horizon for rollout filter
         rollout_velocity_threshold: Velocity threshold for rollout filter
+        record_video: Whether to record videos of episodes
+        video_folder: Directory to save video recordings
+        video_fps: Frame rate for video recordings
+        video_camera: Camera name for video recording (e.g., 'vision', 'track', 'fixednear', 'fixedfar')
     """
     print(f"Loading SAC model from: {model_path}")
     
     # Create original safety-gymnasium environment with rendering
-    env = safety_gymnasium.make(env_id, render_mode="human")
+    # Use rgb_array for video recording, or human for visualization only
+    render_mode = "rgb_array" if record_video else "human"
+    env = safety_gymnasium.make(env_id, 
+        render_mode=render_mode,
+        width=1920,
+        height=1080,
+        camera_name=video_camera
+    )
     env = TerminateOnCollisionWrapper(env)
     env = safety_gymnasium.wrappers.SafetyGymnasium2Gymnasium(env)
     
@@ -169,6 +183,19 @@ def replay_sac_model(model_path: str, env_id: str = "SafetyCarCircle2-v0",
                                  velocity_threshold=rollout_velocity_threshold)
         env = Monitor(env)
     
+    # Add video recording wrapper if requested (before other wrappers)
+    if record_video:
+        # Determine video name prefix based on filter mode
+        video_prefix = f"{filter_mode}_filter" if filter_mode != "none" else "no_filter"
+        env = VideoRecordingWrapper(
+            env, 
+            video_folder=video_folder,
+            name_prefix=video_prefix,
+            fps=video_fps,
+            record_every_n_episodes=1,  # Record all episodes
+            include_stats_in_name=True
+        )
+
     # Load the trained SAC model
     try:
         model = SAC.load(model_path, env=env)
@@ -193,6 +220,12 @@ def replay_sac_model(model_path: str, env_id: str = "SafetyCarCircle2-v0",
     print(f"   Episodes: {num_episodes}")
     print(f"   Deterministic: {deterministic}")
     print(f"   Step delay: {step_delay}s")
+    if record_video:
+        print(f"   Video recording: ON")
+        print(f"   Video folder: {video_folder}")
+        print(f"   Video FPS: {video_fps}")
+        if video_camera:
+            print(f"   Video camera: {video_camera}")
     print(f"\nGoal: Navigate using trained policy {'with safety filter' if filter_mode != 'none' else 'without filter'}!")
     print(f"   Safety violations will be tracked via environment's built-in cost signal\n")
     
@@ -320,6 +353,23 @@ Examples:
   python replay_trained_sac_model_car_circle.py --model path/to/model.zip \\
       --filter rollout --safety-model path/to/safety_model.zip \\
       --horizon 10 --velocity-threshold 0.1
+  
+  # Record videos of episodes
+  python replay_trained_sac_model_car_circle.py --model path/to/model.zip \\
+      --record-video --video-folder ./my_videos --video-fps 30
+  
+  # Record videos with different camera view (top-down)
+  python replay_trained_sac_model_car_circle.py --model path/to/model.zip \\
+      --record-video --video-camera fixednear
+  
+  # Record videos with tracking camera
+  python replay_trained_sac_model_car_circle.py --model path/to/model.zip \\
+      --record-video --video-camera track
+  
+  # Record videos with rollout filter
+  python replay_trained_sac_model_car_circle.py --model path/to/model.zip \\
+      --filter rollout --safety-model path/to/safety_model.zip \\
+      --record-video --video-folder ./filtered_videos
         """
     )
     parser.add_argument("--model", "-m", type=str, required=True,
@@ -352,6 +402,17 @@ Examples:
     parser.add_argument("--velocity-threshold", type=float, default=0.1,
                         help="Velocity threshold for rollout filter (default: 0.1)")
     
+    # Video recording options
+    parser.add_argument("--record-video", action="store_true",
+                        help="Record videos of episodes")
+    parser.add_argument("--video-folder", type=str, default="./videos",
+                        help="Directory to save video recordings (default: ./videos)")
+    parser.add_argument("--video-fps", type=int, default=30,
+                        help="Frame rate for video recordings (default: 30)")
+    parser.add_argument("--video-camera", type=str, default="fixednear",
+                        choices=[None, "vision", "track", "fixednear", "fixedfar", "human"],
+                        help="Camera to use for video recording (default: environment default, usually 'vision')")
+    
     args = parser.parse_args()
     
     # Check if model exists
@@ -375,7 +436,11 @@ Examples:
         safety_model_path=args.safety_model,
         filter_epsilon=args.epsilon,
         rollout_horizon=args.horizon,
-        rollout_velocity_threshold=args.velocity_threshold
+        rollout_velocity_threshold=args.velocity_threshold,
+        record_video=args.record_video,
+        video_folder=args.video_folder,
+        video_fps=args.video_fps,
+        video_camera=args.video_camera
     )
 
 

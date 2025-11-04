@@ -21,6 +21,9 @@ class ObservationStoringWrapper:
         
     def get_last_observation(self):
         return self.last_observation
+    
+    def render(self, **kwargs):
+        return self.env.render(**kwargs)
         
     def __getattr__(self, name):
         return getattr(self.env, name)
