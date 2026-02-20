@@ -14,10 +14,7 @@ import time
 import pickle
 import safety_gymnasium
 import torch
-<<<<<<< HEAD
 import mujoco
-=======
->>>>>>> 8a47eebe1a66136e68569efc17a06b7d5cb8525a
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
