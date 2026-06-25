@@ -1,0 +1,25 @@
+{
+  "pitch": {
+    "form": "-(c0)*theta_dot",
+    "c0": 1.4192148851419473,
+    "cmu": 0.027236108714925922,
+    "ebar_max": 0.030553619565067636,
+    "note": "mu-independent linear viscous damping; linear => slope correct => backward-pass-ready"
+  },
+  "yaw": {
+    "k0": 0.711818332881714,
+    "kc": 5.828874643814778,
+    "kv": -0.2941425910953992,
+    "eps": 0.1,
+    "N0_mg": 190.95623127000007,
+    "h": 0.1939583353305951,
+    "w": 0.28075,
+    "ebar_rms": 0.28712435061040287,
+    "ebar_max": 4.426216393345783,
+    "form": "-[(k0+kc*mu)*tanh(psidot/eps)+kv*psidot]*(N/N0)"
+  },
+  "long": {
+    "form": "0",
+    "note": "opt6 captures v_dot; residual ~0.01 rad/s^2 (negligible)"
+  }
+}

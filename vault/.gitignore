@@ -1,0 +1,13 @@
+models/
+*.zip
+*.log
+__pycache__/
+*.pyc
+wandb/
+runs/
+tensorboard/
+
+# compiled reduced-dynamics kernel (rebuilt on first import)
+*.so
+*.o
+.DS_Store

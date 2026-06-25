@@ -1,0 +1,9 @@
+# Python deps for the vault 4-state balance-safety package.
+# (SafetySAC itself comes from the host safety-stable-baselines repo: `pip install -e .` at its root.)
+numpy>=1.24
+scipy>=1.10
+torch>=2.0
+gymnasium>=0.29
+mujoco>=3.0          # high-fidelity plant for adversarial RL / ISAACS (vault.mujoco_plant)
+stable-baselines3>=2.0
+# A C compiler (cc/gcc) must be on PATH — the reduced-dynamics kernel is compiled on first use.
