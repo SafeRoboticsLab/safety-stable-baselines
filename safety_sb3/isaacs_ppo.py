@@ -244,19 +244,21 @@ class IsaacsPPO(ReachAvoidPPO):
       self._update_info_buffer(infos, dones)
       n_steps += 1
 
-      # timeout bootstrap with the ACTIVE player's value function
-      for idx, done in enumerate(dones):
-        if (
-          done
-          and infos[idx].get("terminal_observation") is not None
-          and infos[idx].get("TimeLimit.truncated", False)
-        ):
-          terminal_obs = active_policy.obs_to_tensor(
-            infos[idx]["terminal_observation"]
-          )[0]
-          with th.no_grad():
-            terminal_value = active_policy.predict_values(terminal_obs)[0]
-          rewards[idx] += self.gamma * terminal_value
+      # Timeout bootstrap (ACTIVE player's value fn) — DISABLED by default:
+      # the reward is the physical margin g(s) (see SafetyPPO docstring).
+      if self.bootstrap_on_timeout:
+        for idx, done in enumerate(dones):
+          if (
+            done
+            and infos[idx].get("terminal_observation") is not None
+            and infos[idx].get("TimeLimit.truncated", False)
+          ):
+            terminal_obs = active_policy.obs_to_tensor(
+              infos[idx]["terminal_observation"]
+            )[0]
+            with th.no_grad():
+              terminal_value = active_policy.predict_values(terminal_obs)[0]
+            rewards[idx] += self.gamma * terminal_value
 
       l_now = np.array(
         [float(info.get("l_x", 0.0)) for info in infos], dtype=np.float32
