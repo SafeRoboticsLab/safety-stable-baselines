@@ -36,10 +36,35 @@ from gymnasium import spaces
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.utils import obs_as_tensor, update_learning_rate
-from stable_baselines3.common.vec_env import VecEnv
+from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.ppo.ppo import PPO
 
 from .safety_buffers import SafetyRolloutBuffer
+
+
+def _guard_and_normalize_env(env, normalize_obs: bool):
+    """Reject reward-normalizing wrappers and optionally add obs normalization.
+
+    For every Safety* algorithm the reward IS the physical safety margin g(s),
+    an absolute quantity. Normalizing it (VecNormalize's ``norm_reward=True``
+    default) rescales g by a running std and destroys the Safety Bellman
+    backup — the same class of corruption as timeout value-bootstrapping. So
+    we hard-error on it. Observation normalization, by contrast, is REQUIRED
+    for hard robot tasks (rsl_rl normalizes obs on both actor and critic);
+    ``normalize_obs=True`` wraps the env in ``VecNormalize(norm_obs=True,
+    norm_reward=False)`` for you (mirrors rsl_rl's built-in running normalizer).
+    """
+    if isinstance(env, VecNormalize) and env.norm_reward:
+        raise ValueError(
+            "Safety* algorithms require an UN-normalized reward: the reward is "
+            "the physical safety margin g(s), and VecNormalize(norm_reward=True) "
+            "rescales it, corrupting the Safety Bellman backup. Re-wrap with "
+            "VecNormalize(env, norm_obs=True, norm_reward=False), or pass "
+            "normalize_obs=True to the algorithm and drop your VecNormalize."
+        )
+    if normalize_obs and not isinstance(env, VecNormalize):
+        env = VecNormalize(env, norm_obs=True, norm_reward=False)
+    return env
 
 
 class SafetyPPO(PPO):
@@ -47,6 +72,9 @@ class SafetyPPO(PPO):
 
     :param bootstrap_on_timeout: if False (default) skip PPO's timeout value
         bootstrapping — correct for Safety* algorithms whose reward is g(s).
+    :param normalize_obs: wrap the env in VecNormalize(norm_obs=True,
+        norm_reward=False) — obs normalization is needed to match rsl_rl on
+        hard robot tasks; reward normalization is refused (corrupts g).
     :param adaptive_lr: enable rsl_rl-style KL-adaptive learning rate.
     :param desired_kl: target KL for the adaptive LR controller.
     :param lr_bounds: (min, max) bounds for the adaptive LR.
@@ -60,6 +88,7 @@ class SafetyPPO(PPO):
         rollout_buffer_class=None,
         rollout_buffer_kwargs=None,
         bootstrap_on_timeout: bool = False,
+        normalize_obs: bool = False,
         adaptive_lr: bool = False,
         desired_kl: float | None = 0.01,
         lr_bounds: tuple[float, float] = (1e-5, 1e-2),
@@ -69,6 +98,15 @@ class SafetyPPO(PPO):
         # Default to SafetyRolloutBuffer unless the caller overrides it.
         if rollout_buffer_class is None:
             rollout_buffer_class = SafetyRolloutBuffer
+
+        # Guard the reward-normalization footgun + optionally add obs norm.
+        # env is the 2nd positional PPO arg (policy, env, ...) or a kwarg.
+        args = list(args)
+        if "env" in kwargs:
+            kwargs["env"] = _guard_and_normalize_env(kwargs["env"], normalize_obs)
+        elif len(args) >= 2:
+            args[1] = _guard_and_normalize_env(args[1], normalize_obs)
+        args = tuple(args)
 
         self.bootstrap_on_timeout = bool(bootstrap_on_timeout)
         self.adaptive_lr = bool(adaptive_lr)
