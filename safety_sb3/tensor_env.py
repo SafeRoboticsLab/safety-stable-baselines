@@ -103,7 +103,11 @@ class TensorVecNormalize(TensorVecEnv):
   """
 
   def __init__(self, venv: TensorVecEnv, epsilon: float = 1e-8,
-               clip_obs: float = 100.0):
+               clip_obs: float = 10.0):
+    # clip_obs MUST match SB3 VecNormalize (10.0): policies warm-started from
+    # the numpy path were trained on +-10-clipped obs; a wider clip feeds them
+    # 10x out-of-distribution spikes (raycast at gap edges) and silently
+    # breaks the transferred behavior.
     super().__init__(venv.num_envs, venv.observation_space, venv.action_space,
                      venv.device)
     self.venv = venv
