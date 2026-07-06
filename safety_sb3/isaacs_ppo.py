@@ -104,7 +104,9 @@ class IsaacsPPO(ReachAvoidPPO):
       self.observation_space, dstb_space, self.lr_schedule,
       use_sde=self.use_sde, **self.policy_kwargs,
     ).to(self.device)
-    self.dstb_rollout_buffer = ReachAvoidRolloutBuffer(
+    dstb_buf_cls = (self.tensor_rollout_buffer_class if self._tensor_path
+                    else ReachAvoidRolloutBuffer)
+    self.dstb_rollout_buffer = dstb_buf_cls(
       self.n_steps, self.observation_space, dstb_space,
       device=self.device, gamma=self.gamma, gae_lambda=self.gae_lambda,
       n_envs=self.n_envs,
@@ -187,6 +189,135 @@ class IsaacsPPO(ReachAvoidPPO):
         out[mask] = a.cpu().numpy()[mask]
     return out
 
+  def _dstb_actions_tensor(self, obs: th.Tensor) -> th.Tensor:
+    """Per-slice opponent disturbance, torch end-to-end (ctrl phase)."""
+    n = self.n_envs
+    dev = obs.device
+    d = self._dstb_space.shape[0]
+    lo = th.as_tensor(self._dstb_space.low, dtype=th.float32, device=dev)
+    hi = th.as_tensor(self._dstb_space.high, dtype=th.float32, device=dev)
+    out = th.zeros(n, d, device=dev)
+    slice_of_env = getattr(self, "_slice_of_env_t", None)
+    if slice_of_env is None or slice_of_env.shape[0] != n:
+      self._slice_of_env_t = th.as_tensor(self._slice_of_env, device=dev)
+      slice_of_env = self._slice_of_env_t
+    cur = None
+    for si, opp in enumerate(self._slice_opps):
+      mask = slice_of_env == si
+      if not bool(mask.any()) or opp == _ZERO:
+        continue
+      if opp == _RANDOM:
+        out[mask] = lo + (hi - lo) * th.rand(int(mask.sum()), d, device=dev)
+      elif opp == _CURRENT:
+        if cur is None:
+          with th.no_grad():
+            cur, _, _ = self.dstb_policy(obs)
+        out[mask] = cur[mask]
+      else:
+        with th.no_grad():
+          a, _, _ = self._loaded_scratch[opp](obs)
+        out[mask] = a[mask]
+    return out
+
+  def _collect_rollouts_tensor(self, env, callback, rollout_buffer,
+                               n_rollout_steps: int) -> bool:
+    """Torch twin of the two-player rollout: both actions each step, env gets
+    the concatenation, only the ACTIVE player's data is stored."""
+    del rollout_buffer
+    phase = self._phase()
+    active = self.dstb_policy if phase == "dstb" else self.policy
+    passive = self.policy if phase == "dstb" else self.dstb_policy
+    buf = self.dstb_rollout_buffer if phase == "dstb" else self.rollout_buffer
+
+    assert self._last_obs is not None
+    active.set_training_mode(False)
+    passive.set_training_mode(False)
+    if phase == "ctrl":
+      self._resample_slice_opponents()
+
+    dev = env.device
+    obs = self._last_obs
+    if not th.is_tensor(obs):
+      obs = th.as_tensor(np.asarray(obs), dtype=th.float32, device=dev)
+    episode_starts = (self._last_episode_starts
+                      if th.is_tensor(self._last_episode_starts)
+                      else th.as_tensor(np.asarray(
+                        self._last_episode_starts, dtype=np.float32), device=dev))
+    c_lo = th.as_tensor(self._ctrl_space.low, dtype=th.float32, device=dev)
+    c_hi = th.as_tensor(self._ctrl_space.high, dtype=th.float32, device=dev)
+    d_lo = th.as_tensor(self._dstb_space.low, dtype=th.float32, device=dev)
+    d_hi = th.as_tensor(self._dstb_space.high, dtype=th.float32, device=dev)
+    ever_l = getattr(self, "_ever_l_t", None)
+    if ever_l is None or ever_l.shape[0] != env.num_envs:
+      self._ever_l_t = th.zeros(env.num_envs, dtype=th.bool, device=dev)
+      self._ever_gneg_t = th.zeros(env.num_envs, dtype=th.bool, device=dev)
+    slice_of_env = getattr(self, "_slice_of_env_t", None)
+    if slice_of_env is None:
+      self._slice_of_env_t = th.as_tensor(self._slice_of_env, device=dev)
+
+    buf.reset()
+    callback.on_rollout_start()
+    n_steps = 0
+    while n_steps < n_rollout_steps:
+      with th.no_grad():
+        actions, values, log_probs = active(obs)
+      if phase == "dstb":
+        with th.no_grad():
+          ctrl_a, _, _ = passive(obs)
+        dstb_a = actions
+      else:
+        ctrl_a = actions
+        dstb_a = self._dstb_actions_tensor(obs)
+      full = th.cat([th.clamp(ctrl_a, c_lo, c_hi),
+                     th.clamp(dstb_a, d_lo, d_hi)], dim=1)
+
+      new_obs, rewards, dones, timeouts, l_x = env.step_tensor(full)
+      self.num_timesteps += env.num_envs
+      n_steps += 1
+      callback.update_locals(locals())
+      if not callback.on_step():
+        return False
+
+      buf.l_x[buf.pos] = l_x.reshape(buf.n_envs)
+      buf.add(obs, actions, rewards, episode_starts,
+              values.flatten(), log_probs)
+
+      self._ever_l_t |= l_x >= 0.0
+      self._ever_gneg_t |= rewards < 0.0
+      if self._leaderboard is not None and bool(dones.any()):
+        d_b = dones.bool()
+        succ = d_b & timeouts.bool() & self._ever_l_t & ~self._ever_gneg_t
+        b = self._leaderboard.board
+        if phase == "ctrl":
+          for si, opp in enumerate(self._slice_opps):
+            m = d_b & (self._slice_of_env_t == si)
+            if not bool(m.any()):
+              continue
+            col = (b.shape[1] - 1 if opp == _ZERO
+                   else b.shape[1] - 2 if opp in (_RANDOM, _CURRENT) else opp)
+            self._leaderboard.ema_score(-1, col, float(succ[m].float().mean()))
+        else:
+          self._leaderboard.ema_score(
+            -1, b.shape[1] - 2, float(succ[d_b].float().mean()))
+        self._ever_l_t = th.where(d_b, th.zeros_like(self._ever_l_t), self._ever_l_t)
+        self._ever_gneg_t = th.where(d_b, th.zeros_like(self._ever_gneg_t),
+                                     self._ever_gneg_t)
+
+      obs = new_obs
+      episode_starts = dones.float()
+
+    with th.no_grad():
+      last_values = active.predict_values(obs)
+    buf.compute_returns_and_advantage(last_values=last_values.flatten(),
+                                      dones=dones.float())
+    self._last_obs = obs
+    self._last_episode_starts = episode_starts
+    for k, v in (env.metrics() or {}).items():
+      self.logger.record(f"env/{k}", float(v))
+    callback.update_locals(locals())
+    callback.on_rollout_end()
+    return True
+
   # --- rollout collection --------------------------------------------------------
 
   def collect_rollouts(
@@ -198,6 +329,9 @@ class IsaacsPPO(ReachAvoidPPO):
   ) -> bool:
     """Two-player rollout: both actions computed each step, env receives the
     concatenation, only the ACTIVE player's data is stored (in its buffer)."""
+    if self._tensor_path:
+      return self._collect_rollouts_tensor(env, callback, rollout_buffer,
+                                           n_rollout_steps)
     del rollout_buffer  # phase decides the buffer
     phase = self._phase()
     active_policy = self.dstb_policy if phase == "dstb" else self.policy
