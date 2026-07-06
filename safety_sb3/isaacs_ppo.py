@@ -62,8 +62,16 @@ class IsaacsPPO(ReachAvoidPPO):
     softmax_rationality: float = 3.0,
     leaderboard_freq_cycles: int = 1,
     num_slices: int = 8,
+    dstb_learning_rate: float | None = None,
+    dstb_ent_coef: float | None = None,
     **kwargs,
   ) -> None:
+    # Per-player optimization: the two players sit in different optimization
+    # regimes (ctrl is usually warm-started and precise; dstb is fresh and
+    # exploratory). The reference setup used ctrl lr 5e-4 / dstb 3e-4 and
+    # ctrl ent 5e-4 / dstb 2e-3. None -> inherit the ctrl value.
+    self._dstb_lr = None if dstb_learning_rate is None else float(dstb_learning_rate)
+    self._dstb_ent = None if dstb_ent_coef is None else float(dstb_ent_coef)
     self.ctrl_action_dim = int(ctrl_action_dim)
     self._dstb_pretrain = int(dstb_pretrain_rollouts)
     self._ctrl_per_cycle = int(ctrl_rollouts_per_cycle)
@@ -133,6 +141,18 @@ class IsaacsPPO(ReachAvoidPPO):
     )
     self._ever_l = np.zeros(n, dtype=bool)
     self._ever_gneg = np.zeros(n, dtype=bool)
+
+    # Per-player KL-adaptive LR state: a SHARED controller cross-contaminates
+    # (a dstb phase's KL would move the LR the next ctrl phase trains with,
+    # and vice versa). Each player keeps its own scalar; train() swaps the
+    # active one into SafetyPPO's controller and stores it back after.
+    if self.adaptive_lr:
+      self._adaptive_lr_ctrl = float(self._adaptive_lr)
+      self._adaptive_lr_dstb = float(self._dstb_lr if self._dstb_lr is not None
+                                     else self._adaptive_lr)
+    if self._dstb_lr is not None:
+      for grp in self.dstb_policy.optimizer.param_groups:
+        grp["lr"] = self._dstb_lr
 
   # --- phase machine -----------------------------------------------------------
 
@@ -440,20 +460,48 @@ class IsaacsPPO(ReachAvoidPPO):
 
   # --- updates -----------------------------------------------------------------
 
+  def _update_learning_rate(self, optimizers) -> None:
+    """Phase-aware: after the base update (adaptive scalar or ctrl schedule),
+    re-apply the dstb player's own fixed LR in dstb phases (the base call
+    would otherwise apply the ctrl schedule to the dstb optimizer)."""
+    super()._update_learning_rate(optimizers)
+    if (not self.adaptive_lr and self._dstb_lr is not None
+        and self._phase() == "dstb"):
+      from stable_baselines3.common.utils import update_learning_rate
+      update_learning_rate(
+        optimizers if not isinstance(optimizers, list) else optimizers[0],
+        self._dstb_lr)
+      self.logger.record("isaacs/lr_dstb", self._dstb_lr)
+
   def train(self) -> None:
     phase = self._phase()
     if phase == "dstb":
       # Min player: SAME reach-avoid targets, NEGATED advantage; PPO.train()
-      # runs against the swapped-in dstb policy/buffer.
+      # runs against the swapped-in dstb policy/buffer with the DSTB player's
+      # own LR (adaptive state) and entropy coefficient.
       self.dstb_rollout_buffer.advantages *= -1.0
       ctrl_policy, ctrl_buf = self.policy, self.rollout_buffer
+      ctrl_ent = self.ent_coef
       self.policy, self.rollout_buffer = self.dstb_policy, self.dstb_rollout_buffer
+      if self._dstb_ent is not None:
+        self.ent_coef = self._dstb_ent
+      if self.adaptive_lr:
+        self._adaptive_lr = self._adaptive_lr_dstb
       try:
         super().train()
       finally:
+        if self.adaptive_lr:
+          self._adaptive_lr_dstb = float(self._adaptive_lr)
+          self.logger.record("isaacs/lr_dstb", self._adaptive_lr_dstb)
         self.policy, self.rollout_buffer = ctrl_policy, ctrl_buf
+        self.ent_coef = ctrl_ent
     else:
+      if self.adaptive_lr:
+        self._adaptive_lr = self._adaptive_lr_ctrl
       super().train()
+      if self.adaptive_lr:
+        self._adaptive_lr_ctrl = float(self._adaptive_lr)
+        self.logger.record("isaacs/lr_ctrl", self._adaptive_lr_ctrl)
 
     self._rollouts_done += 1
     self.logger.record("isaacs/phase_is_dstb", float(phase == "dstb"))
