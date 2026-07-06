@@ -40,6 +40,8 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.ppo.ppo import PPO
 
 from .safety_buffers import SafetyRolloutBuffer
+from .tensor_buffers import TensorSafetyRolloutBuffer
+from .tensor_env import TensorVecEnv, TensorVecNormalize
 
 
 def _guard_and_normalize_env(env, normalize_obs: bool):
@@ -62,6 +64,12 @@ def _guard_and_normalize_env(env, normalize_obs: bool):
             "VecNormalize(env, norm_obs=True, norm_reward=False), or pass "
             "normalize_obs=True to the algorithm and drop your VecNormalize."
         )
+    if getattr(env, "is_tensor_env", False):
+        # GPU-resident path: reward normalization does not exist by design;
+        # obs normalization uses the on-device running normalizer.
+        if normalize_obs and not isinstance(env, TensorVecNormalize):
+            env = TensorVecNormalize(env)
+        return env
     if normalize_obs and not isinstance(env, VecNormalize):
         env = VecNormalize(env, norm_obs=True, norm_reward=False)
     return env
@@ -79,7 +87,15 @@ class SafetyPPO(PPO):
     :param desired_kl: target KL for the adaptive LR controller.
     :param lr_bounds: (min, max) bounds for the adaptive LR.
     :param adaptive_lr_factor: multiplicative step for the adaptive LR.
+
+    GPU-resident path: pass a :class:`~safety_sb3.tensor_env.TensorVecEnv`
+    and everything (rollout, buffer, backup, minibatching) stays on device —
+    no numpy bounce. Detected automatically; env ``metrics()`` (curriculum
+    levels etc.) are forwarded to the logger every rollout.
     """
+
+    numpy_rollout_buffer_class = SafetyRolloutBuffer
+    tensor_rollout_buffer_class = TensorSafetyRolloutBuffer
 
     def __init__(
         self,
@@ -95,10 +111,6 @@ class SafetyPPO(PPO):
         adaptive_lr_factor: float = 1.5,
         **kwargs,
     ):
-        # Default to SafetyRolloutBuffer unless the caller overrides it.
-        if rollout_buffer_class is None:
-            rollout_buffer_class = SafetyRolloutBuffer
-
         # Guard the reward-normalization footgun + optionally add obs norm.
         # env is the 2nd positional PPO arg (policy, env, ...) or a kwarg.
         args = list(args)
@@ -107,6 +119,23 @@ class SafetyPPO(PPO):
         elif len(args) >= 2:
             args[1] = _guard_and_normalize_env(args[1], normalize_obs)
         args = tuple(args)
+
+        # GPU-resident path? (detected from the env; see tensor_env.py)
+        _env = kwargs.get("env", args[1] if len(args) >= 2 else None)
+        self._tensor_path = bool(getattr(_env, "is_tensor_env", False))
+        if self._tensor_path and bootstrap_on_timeout:
+            raise ValueError(
+                "bootstrap_on_timeout=True is not supported on the tensor path "
+                "(it is wrong for safety margins in any case)."
+            )
+
+        # Default buffer: numpy safety buffer, or its torch twin on the
+        # tensor path (class attrs so subclasses swap both consistently).
+        if rollout_buffer_class is None:
+            rollout_buffer_class = (
+                self.tensor_rollout_buffer_class if self._tensor_path
+                else self.numpy_rollout_buffer_class
+            )
 
         self.bootstrap_on_timeout = bool(bootstrap_on_timeout)
         self.adaptive_lr = bool(adaptive_lr)
@@ -133,8 +162,10 @@ class SafetyPPO(PPO):
     def _setup_model(self) -> None:
         # Builds policy, optimizer, and rollout buffer.
         super()._setup_model()
-        assert isinstance(self.rollout_buffer, SafetyRolloutBuffer), (
-            "SafetyPPO requires SafetyRolloutBuffer. "
+        assert isinstance(
+            self.rollout_buffer, (SafetyRolloutBuffer, TensorSafetyRolloutBuffer)
+        ), (
+            "SafetyPPO requires a Safety rollout buffer (numpy or tensor). "
             "Pass `rollout_buffer_class=SafetyRolloutBuffer` (and "
             "rollout_buffer_kwargs if needed)."
         )
@@ -173,6 +204,89 @@ class SafetyPPO(PPO):
         friends override it.  (Rollout buffers do not receive ``infos`` in
         stock SB3, so extras must be captured here.)"""
 
+    def _record_step_extras_tensor(self, rollout_buffer, l_x: th.Tensor) -> None:
+        """Tensor twin of ``_record_step_extras`` (no-op for avoid-only)."""
+
+    def _collect_rollouts_tensor(
+        self,
+        env,
+        callback: BaseCallback,
+        rollout_buffer,
+        n_rollout_steps: int,
+    ) -> bool:
+        """GPU-resident rollout: policy forward, env step, buffer add and the
+        backup all stay on device. Episode stats and env ``metrics()``
+        (curriculum levels etc.) are recorded to the logger directly."""
+        assert self._last_obs is not None
+        self.policy.set_training_mode(False)
+        rollout_buffer.reset()
+        callback.on_rollout_start()
+
+        dev = env.device
+        obs = self._last_obs
+        if not th.is_tensor(obs):  # first call after _setup_learn
+            obs = th.as_tensor(np.asarray(obs), dtype=th.float32, device=dev)
+        episode_starts = th.as_tensor(
+            np.asarray(self._last_episode_starts, dtype=np.float32), device=dev
+        ) if not th.is_tensor(self._last_episode_starts) else self._last_episode_starts
+
+        low = th.as_tensor(self.action_space.low, dtype=th.float32, device=dev)
+        high = th.as_tensor(self.action_space.high, dtype=th.float32, device=dev)
+
+        ep_ret = getattr(self, "_t_ep_ret", None)
+        if ep_ret is None or ep_ret.shape[0] != env.num_envs:
+            self._t_ep_ret = th.zeros(env.num_envs, device=dev)
+            self._t_ep_len = th.zeros(env.num_envs, device=dev)
+        fin_ret, fin_len = [], []
+
+        n_steps = 0
+        while n_steps < n_rollout_steps:
+            with th.no_grad():
+                actions, values, log_probs = self.policy(obs)
+            clipped = th.clamp(actions, low, high)
+
+            new_obs, rewards, dones, timeouts, l_x = env.step_tensor(clipped)
+            self.num_timesteps += env.num_envs
+            n_steps += 1
+
+            callback.update_locals(locals())
+            if not callback.on_step():
+                return False
+
+            self._record_step_extras_tensor(rollout_buffer, l_x)
+            rollout_buffer.add(obs, actions, rewards, episode_starts,
+                               values.flatten(), log_probs)
+
+            self._t_ep_ret += rewards
+            self._t_ep_len += 1.0
+            if bool(dones.any()):
+                d = dones.bool()
+                fin_ret.append(self._t_ep_ret[d])
+                fin_len.append(self._t_ep_len[d])
+                self._t_ep_ret = th.where(d, th.zeros_like(self._t_ep_ret), self._t_ep_ret)
+                self._t_ep_len = th.where(d, th.zeros_like(self._t_ep_len), self._t_ep_len)
+
+            obs = new_obs
+            episode_starts = dones.float()
+
+        with th.no_grad():
+            last_values = self.policy.predict_values(obs)
+        rollout_buffer.compute_returns_and_advantage(
+            last_values=last_values.flatten(), dones=dones.float())
+
+        self._last_obs = obs
+        self._last_episode_starts = episode_starts
+
+        if fin_ret:
+            self.logger.record("rollout/ep_rew_mean", float(th.cat(fin_ret).mean()))
+            self.logger.record("rollout/ep_len_mean", float(th.cat(fin_len).mean()))
+        for k, v in (env.metrics() or {}).items():
+            self.logger.record(f"env/{k}", float(v))
+
+        callback.update_locals(locals())
+        callback.on_rollout_end()
+        return True
+
     def collect_rollouts(
         self,
         env: VecEnv,
@@ -183,7 +297,11 @@ class SafetyPPO(PPO):
         """SB3 ``OnPolicyAlgorithm.collect_rollouts`` with two safety changes:
         the timeout value-bootstrap is gated by ``self.bootstrap_on_timeout``
         (off by default — the reward is the physical margin g(s)), and a
-        ``_record_step_extras`` hook runs before each ``add()``."""
+        ``_record_step_extras`` hook runs before each ``add()``.  On the
+        GPU-resident path this dispatches to ``_collect_rollouts_tensor``."""
+        if self._tensor_path:
+            return self._collect_rollouts_tensor(
+                env, callback, rollout_buffer, n_rollout_steps)
         assert self._last_obs is not None, "No previous observation was provided"
         self.policy.set_training_mode(False)
 
