@@ -29,17 +29,23 @@ from safety_sb3.safety_sac import SafetySAC
 
 
 class ReachAvoidSAC(SafetySAC):
-  """SAC with the reach-avoid Bellman backup."""
+  """SAC with the reach-avoid Bellman backup.
+
+  Tensor path (``TensorVecEnv``): the device-resident
+  :class:`~safety_sb3.tensor_replay.TensorReplayBuffer` is built with
+  ``store_l=True`` (l comes from ``step_tensor``'s ``l_x`` return, not infos);
+  ``train()`` below is unchanged."""
+
+  _tensor_store_l = True  # tensor buffer stores l(s)
 
   def __init__(self, *args, replay_buffer_class=None, **kwargs) -> None:
     if replay_buffer_class is None:
       replay_buffer_class = ReachAvoidReplayBuffer
     super().__init__(*args, replay_buffer_class=replay_buffer_class, **kwargs)
     # On load (_init_setup_model=False) the buffer is built later; only validate
-    # when it already exists.
-    if self.replay_buffer is not None and not isinstance(
-      self.replay_buffer, ReachAvoidReplayBuffer
-    ):
+    # when it already exists. The tensor path builds its own l-carrying buffer.
+    if (not self._tensor_path and self.replay_buffer is not None
+        and not isinstance(self.replay_buffer, ReachAvoidReplayBuffer)):
       raise TypeError(
         "ReachAvoidSAC needs a ReachAvoidReplayBuffer (it stores l(s)); got "
         f"{type(self.replay_buffer).__name__}."
