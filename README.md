@@ -63,7 +63,7 @@ normalization. See `tests/test_tensor_sac.py` for a complete minimal example
 ## Installation
 
 ```bash
-conda create --name safety_sb3 python=3.10
+conda create --name safety_sb3 python=3.10   # any >=3.10 works for the core
 conda activate safety_sb3
 
 git clone git@github.com:SafeRoboticsLab/safety-stable-baselines.git
@@ -72,7 +72,12 @@ pip install -e .
 ```
 
 That is the whole core install (deps: `stable-baselines3`, `torch`, `gymnasium`,
-`numpy`, `tensorboard`, `wandb`).
+`numpy`, `tensorboard`, `wandb`). To depend on a released version from another
+project (e.g. [robot-safety-sandbox](https://github.com/SafeRoboticsLab/robot-safety-sandbox)):
+
+```
+safety_sb3 @ git+https://github.com/SafeRoboticsLab/safety-stable-baselines.git@v0.1.0
+```
 
 Optional extras for the bundled benchmark environments (only needed to run the
 `examples/`): this repo includes
