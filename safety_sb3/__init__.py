@@ -12,8 +12,10 @@ from .isaacs import IsaacsSAC
 from .safety_buffers import ReachAvoidRolloutBuffer
 from .reach_avoid_ppo import ReachAvoidPPO
 from .isaacs_ppo import IsaacsPPO
+from .callbacks import StdCapCallback
 
 __all__ = [
+    "StdCapCallback",
     "SafetySAC",
     "SafetyDQN",
     "SafetyPPO",
