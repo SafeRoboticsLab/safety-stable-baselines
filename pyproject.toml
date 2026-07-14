@@ -20,6 +20,9 @@ dependencies = [
   "wandb"
 ]
 
+[project.optional-dependencies]
+tests = ["pytest"]
+
 [project.urls]
 Homepage = "https://github.com/SafeRoboticsLab/safety-stable-baselines"
 Repository = "https://github.com/SafeRoboticsLab/safety-stable-baselines"
