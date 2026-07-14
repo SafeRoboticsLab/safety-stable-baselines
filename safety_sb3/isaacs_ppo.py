@@ -51,7 +51,12 @@ class IsaacsPPO(ReachAvoidPPO):
     self,
     policy,
     env,
-    ctrl_action_dim: int,
+    # Sentinel default keeps SB3 ``load()`` working: load() constructs the
+    # class BARE (cls(policy, env=None, _init_setup_model=False)) then restores
+    # __dict__, so the saved ctrl_action_dim replaces the sentinel before
+    # _setup_model() ever runs. Direct construction must pass a real value
+    # (validated in _split_action_space).
+    ctrl_action_dim: int = -1,
     dstb_pretrain_rollouts: int = 20,
     ctrl_rollouts_per_cycle: int = 4,
     dstb_rollouts_per_cycle: int = 1,
@@ -92,6 +97,9 @@ class IsaacsPPO(ReachAvoidPPO):
     full = self.action_space
     assert isinstance(full, spaces.Box) and len(full.shape) == 1
     c = self.ctrl_action_dim
+    assert c > 0, (
+      "ctrl_action_dim not set — pass it to IsaacsPPO(...) (the -1 default "
+      "exists only so SB3 load() can construct the class bare).")
     ctrl = spaces.Box(low=full.low[:c], high=full.high[:c], dtype=full.dtype)
     dstb = spaces.Box(low=full.low[c:], high=full.high[c:], dtype=full.dtype)
     return ctrl, dstb
