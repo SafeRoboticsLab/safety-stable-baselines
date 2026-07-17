@@ -1,0 +1,55 @@
+site_name: safety-stable-baselines
+site_description: Hamilton-Jacobi safety RL, reach-avoid RL, and ISAACS on Stable-Baselines3
+repo_url: https://github.com/SafeRoboticsLab/safety-stable-baselines
+repo_name: SafeRoboticsLab/safety-stable-baselines
+edit_uri: edit/main/
+
+theme:
+  name: material
+  features: [navigation.sections, navigation.top, content.code.copy, toc.follow]
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle: { icon: material/weather-sunny, name: Light mode }
+
+extra_css:
+  - stylesheets/extra.css
+
+exclude_docs: |
+  log/
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: sphinx
+            show_source: true
+            show_root_heading: true
+            members_order: source
+            separate_signature: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.details
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.snippets: { base_path: [.] }
+
+nav:
+  - Home: index.md
+  - API guide: API.md
+  - Best practices: best-practices.md
+  - Release notes: release-notes.md
+  - Evaluation: eval.md
+  - Code reference: reference.md

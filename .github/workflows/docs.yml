@@ -1,0 +1,32 @@
+name: docs
+on:
+  push:
+    branches: [main]
+    paths: [docs/**, mkdocs.yml, safety_sb3/**, README.md, BEST_PRACTICES.md, RELEASE_NOTES.md, eval.md, .github/workflows/docs.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # mkdocstrings reads source STATICALLY (griffe) -- no mjlab / GPU stack needed.
+      - run: pip install -r docs/requirements.txt
+      - run: mkdocs build --strict -d site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

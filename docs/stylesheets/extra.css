@@ -1,0 +1,16 @@
+/* Princeton orange (#E77500, Pantone 158) + black accents */
+[data-md-color-primary=custom] {
+  --md-primary-fg-color:        #E77500;
+  --md-primary-fg-color--light: #F1A04A;
+  --md-primary-fg-color--dark:  #B35C00;
+  --md-primary-bg-color:        #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+[data-md-color-accent=custom] {
+  --md-accent-fg-color:             #B35C00;
+  --md-accent-fg-color--transparent:#E7750033;
+}
+/* keep links legible against orange in dark mode */
+[data-md-color-scheme=slate] {
+  --md-typeset-a-color: #F1A04A;
+}

@@ -10,6 +10,10 @@ L4DC '23) — plus a GPU-resident tensor path for massively parallel simulators
 package and still feels native to SB3 users: same constructors, same `learn()`, same
 callbacks and loggers.
 
+📖 **[docs/API.md](docs/API.md)** is the canonical API reference — the env contract,
+the 2×2 of learners, the backups, and `terminal_type`. Start there to integrate the
+algorithms into your own project.
+
 ## Algorithms
 
 The learners form a **2×2 over {problem} × {players}**. Pick the cell that matches

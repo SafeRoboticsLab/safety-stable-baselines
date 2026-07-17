@@ -71,3 +71,5 @@ experiments/
 *.rar
 *.7z
 *.mp4
+# mkdocs build output
+site/
