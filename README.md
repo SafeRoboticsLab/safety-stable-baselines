@@ -12,22 +12,84 @@ callbacks and loggers.
 
 ## Algorithms
 
-| class | base | backup (value target) | policies |
+The learners form a **2×2 over {problem} × {players}**. Pick the cell that matches
+your task — the two problems take *different* value operators, and avoid is **not**
+expressible as a reach-avoid instance (see below).
+
+|  | **avoid** (stay safe forever) | **reach-avoid** (reach it, staying safe throughout) |
+|---|---|---|
+| **single-player** | `SafetyPPO` `SafetySAC` `SafetyDQN` `SafetyA2C` | `ReachAvoidPPO` `ReachAvoidSAC` |
+| **two-player** (ctrl max + dstb min) | `IsaacsPPO` `IsaacsSAC` | `GameplayPPO` `GameplaySAC` |
+
+| class | base | backup (value target) | anchor |
 |---|---|---|---|
-| `SafetySAC` | SAC | `min(g, V')` | 1 (avoid) |
-| `SafetyDQN` | DQN | `min(g, V')` | 1 (avoid) |
-| `SafetyPPO` | PPO | `min(g, V')` | 1 (avoid) |
-| `SafetyA2C` | A2C | `min(g, V')` | 1 (avoid) |
-| `ReachAvoidSAC` | SAC | `min(g, max(l, V'))` | 1 (reach-avoid) |
-| `ReachAvoidPPO` | PPO | `min(g, max(l, V'))` | 1 (reach-avoid) |
-| `IsaacsSAC` | ReachAvoidSAC | `min(g, max(l, V'))`, two-player | ctrl (max) + dstb (min) |
-| `IsaacsPPO` | ReachAvoidPPO | `min(g, max(l, V'))`, two-player | ctrl (max) + dstb (min) |
+| `SafetySAC` | SAC | `min(g, V')` | `g` |
+| `SafetyDQN` | DQN | `min(g, V')` | `g` |
+| `SafetyPPO` | PPO | `min(g, V')` | `g` |
+| `SafetyA2C` | A2C | `min(g, V')` | `g` |
+| `ReachAvoidSAC` | SafetySAC | `min(g, max(l, V'))` | `min(l, g)` |
+| `ReachAvoidPPO` | SafetyPPO | `min(g, max(l, V'))` | `min(l, g)` |
+| `IsaacsSAC` | GameplaySAC | `min(g, V')`, two-player | `g` |
+| `IsaacsPPO` | GameplayPPO | `min(g, V')`, two-player | `g` |
+| `GameplaySAC` | ReachAvoidSAC | `min(g, max(l, V'))`, two-player | `min(l, g)` |
+| `GameplayPPO` | ReachAvoidPPO | `min(g, max(l, V'))`, two-player | `min(l, g)` |
+
+`Isaacs*` = ISAACS (Hsu et al. 2022), the two-player **avoid** game — its paper has
+no target set and no `l`. `Gameplay*` = Gameplay Filters (Hsu et al. 2024), which
+extends ISAACS to reach-avoid. **These names changed meaning in v0.2.0** — see
+[RELEASE_NOTES.md](RELEASE_NOTES.md).
+
+Every backup is defined once in [`safety_sb3/backups.py`](safety_sb3/backups.py)
+and shared by all learners; read that module for the operators and their
+derivations.
 
 All backups use the time-discounted convention
-`target = (1 − γ·nt)·g + γ·nt·backup` with `nt = 1` on non-terminal steps, so a
-terminating step returns exactly `g` (the terminal anchor is `g`, **not** `min(g, l)` —
-anchoring on `min(g, l)` injects the large negative off-target `l` into every episode
-end and stalls learning; see `safety_sb3/safety_buffers.py`).
+
+```
+target = nt·( (1 − γ)·anchor + γ·backup ) + (1 − nt)·terminal
+```
+
+with `nt = 1` on non-terminal steps. **The anchor differs by problem.** It is the
+"episode terminates now" payoff (`1 − γ` is the termination probability), so:
+
+- **avoid** → `g`: stopping now scores well iff you are safe.
+- **reach-avoid** → `min(l, g)`: stopping now scores well iff you are **in the target
+  _and_ safe**.
+
+The reach-avoid anchor is the discounted reach-avoid Bellman equation of Hsu et al.
+(RSS'21, eq. 15) and Gameplay Filters (eq. 6a), and is the same expression as their
+finite-horizon terminal condition `V_H = min(l, g)` (eq. 5b).
+
+ISAACS (eq. 6) anchors on `g`, but it is a pure **avoid** game — no target set, no `l`
+anywhere. That anchor does not carry over: Gameplay Filters exists precisely to extend
+ISAACS to reach-avoid, and it changes the anchor when it does.
+
+Anchoring reach-avoid on `g` makes "stay safe forever, never reach" a fixed point at
+`V = g > 0` — a win — when its true reach-avoid value is `maxₜ l(sₜ) < 0`. The result is
+neither the reach-avoid value nor the avoid value; RSS'21's under-approximation theorem
+stops applying, so the critic can wrongly certify reachability. RSS'21 says of the
+`g`-anchored form (its eq. 13) that it approximates "safety or liveness problems, **but
+not both**".
+
+`ReachAvoid*`/`Gameplay*` take `terminal_type` (`"all"` → `min(l, g)`, the default and
+the horizon condition; `"g"` → `g` alone), matching the reference implementation.
+
+#### Avoid is not a reach-avoid instance — don't degenerate `l`
+
+A recurring temptation is to run an avoid task on a reach-avoid learner by pinning `l`
+to a constant. It cannot work. The reduction needs the anchor to reduce
+(`min(l,g) = g` ⟹ `l ≥ g`) **and** the recursion to reduce (`max(l,V') = V'` ⟹
+`l ≤ V'`); since `V' ≤ g`, that demands `l ≥ g ≥ V' ≥ l`. No `l` satisfies it:
+
+- `l ≡ −C` (large negative) buys the recursion, destroys the anchor → `V ≡ −C`
+  everywhere, independent of the dynamics: **an empty safe set, with healthy-looking
+  `ep_len`/`ep_rew`/`critic_loss` throughout.**
+- `l ≡ 0` or `+C` buys the anchor, destroys the recursion → the target is everywhere, so
+  you are "already done" at `t=0`, `max(l, ·)` clips every negative future, and `V ≡ g`:
+  a myopic "am I safe right now" with no lookahead.
+
+Use the avoid row of the table. That is what the reference does — it switches operator
+rather than hunting for a clever `l`.
 
 ### Margin conventions (the env contract)
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "safety_sb3"
-version = "0.1.0"
+version = "0.2.0"
 description = "Safety RL add-on for Stable-Baselines3"
 readme = "README.md"
 # Core package runs on any modern python (validated on 3.10 and 3.11).

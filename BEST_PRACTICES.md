@@ -22,6 +22,13 @@ while retaining the skill. Most formulations set this dial by accident. Signatur
 task-completion rate decays smoothly over training while the safety rate rises and
 the skill remains demonstrable from pinned states.
 
+> **Caveat — this `p*` needs re-deriving.** The break-even above compares attempting
+> against a *non-negative* stop baseline, which is what a `g`-anchored reach-avoid
+> backup produces. Under the correct `min(l, g)` anchor, loitering off-target is worth
+> `l < 0`, so attempting only has to beat a negative baseline and the true `p*` is
+> lower — possibly much lower. Treat the `75%` figure as an artifact of the old anchor
+> until it is re-derived and re-measured.
+
 **Check margin floors against your reset distribution's physics.** If a margin term
 (e.g. a landing-impact limit) is violated by the *reset states themselves* (e.g.
 spawn drops touch down at 3 m/s against a 2.2 m/s limit), that part of the state
@@ -29,9 +36,9 @@ space is condemned by construction and the curriculum anchor dies. Signature:
 episode length collapses to a few steps at specific curriculum rungs; levels stall
 near zero.
 
-**Terminate the episode when `g < 0`.** The buffers anchor terminal steps at `g`;
-letting the sim keep running after a violation leaks post-failure states into the
-value target.
+**Terminate the episode when `g < 0`.** The buffers anchor terminal steps at `g`
+(avoid) or `min(l, g)` (reach-avoid); letting the sim keep running after a
+violation leaks post-failure states into the value target.
 
 ## 2. Optimizer stability (on-policy fine-tuning)
 
@@ -76,10 +83,29 @@ the per-step reward is net-negative.
 
 ## 4. Reach-avoid specifics
 
-**Terminal anchor is `g`, not `min(g, l)`.** Anchoring terminals on `min(g, l)`
-injects the (usually large negative) off-target `l` into every episode end and
-stalls learning. This library's buffers already implement the correct convention;
-keep it if you write a custom buffer.
+**Pick the cell, don't bend the margins.** The learners are a 2×2 over
+{avoid, reach-avoid} × {single, two-player} — see the README table. Avoid is
+**not** a reach-avoid instance with a degenerate `l`: the reduction needs
+`l ≥ g` (for the anchor) *and* `l ≤ V'` (for the recursion), and `V' ≤ g`, so it
+demands `l ≥ g ≥ V' ≥ l`. A large negative `l` gives `V ≡ l` — an empty safe set
+with healthy-looking metrics. A zero/positive `l` gives `V ≡ g` — no lookahead at
+all, since `max(l, ·)` clips every negative future. **If your `l` exists only to
+be ignored, you have an avoid task: use `SafetyPPO` or `IsaacsPPO`.**
+
+**The reach-avoid anchor is `min(l, g)`, not `g`.** The `(1 − γ)` anchor is the
+"terminate now" payoff, and reach-avoid scores that well only if you are in the
+target *and* safe. Anchoring on `g` — the *avoid* problem's anchor — makes "stay
+safe forever, never reach" a fixed point at `V = g > 0`, a win, when its true
+reach-avoid value is `maxₜ l(sₜ) < 0`. That is the **loiter optimum**: the policy
+parks in a safe state, never attempts the task, and the critic calls it success.
+If you write a custom buffer, keep the anchor `min(l, g)`; see the README table
+for which anchor goes with which problem.
+
+**Don't carry ISAACS's `g` anchor into a reach-avoid problem.** ISAACS is an
+avoid game (no target set, no `l` in the paper at all), so `g` is right *there*.
+Gameplay Filters extends ISAACS to reach-avoid and changes the anchor to
+`min(l, g)`. The mixture — a `g` anchor with a `max(l, V')` recursion — appears
+in none of the papers, and its fixed point is neither problem's value.
 
 **`l` enters through the recursion, so target visits must be on-policy reachable.**
 The reach term only banks value along trajectories that actually visit `l ≥ 0`. If
