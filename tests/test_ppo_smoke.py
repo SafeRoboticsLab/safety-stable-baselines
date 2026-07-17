@@ -54,11 +54,22 @@ def test_safety_ppo_smoke_and_std_cap():
 
 
 def test_reach_avoid_ppo_smoke():
+  """The critic must show a REACH signal, and converge to min(l, g) on target.
+
+  Both probe states are safe with the SAME g = 0.5, so an avoid-only critic
+  values them identically; only the reach term can separate them. (An earlier
+  version of this test compared the target against a doomed boundary state,
+  which the avoid signal alone already orders — and which sits off the
+  converged policy's visitation, so the critic there is extrapolating.)
+  """
   model = ReachAvoidPPO("MlpPolicy", DoubleIntegratorGym(), n_steps=256,
                         batch_size=256, seed=0, verbose=0)
-  model.learn(total_timesteps=8_192)
+  model.learn(total_timesteps=40_960)
   # l_x must actually have been threaded into the buffer (not the 0.0 default)
   assert float(np.abs(model.rollout_buffer.l_x).sum()) > 0
-  vals = _values(model, [[0.5, 0.0], [0.98, 0.8]])
+  # x = 0.5 -> l = +0.2 (on target); x = -0.5 -> l = -0.8 (off target)
+  vals = _values(model, [[0.5, 0.0], [-0.5, 0.0]])
   assert np.all(np.isfinite(vals))
-  assert vals[0] > vals[1], vals
+  assert vals[0] > vals[1] + 0.05, vals
+  # parking on target is a fixed point at V = min(l, g) = min(0.2, 0.5) = 0.2
+  assert abs(vals[0] - 0.2) < 0.05, vals

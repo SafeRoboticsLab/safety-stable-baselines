@@ -6,6 +6,8 @@ from stable_baselines3.sac.sac import SAC
 from stable_baselines3.common.type_aliases import RolloutReturn, TrainFreq
 from stable_baselines3.common.utils import polyak_update, should_collect_more_steps
 
+from . import backups
+
 
 class SafetySAC(SAC):
     """We subclass SAC to reuse the actor, entropy regularization, replay buffer, etc.
@@ -208,13 +210,11 @@ class SafetySAC(SAC):
                 # add entropy term
                 next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
 
-                # Safety Bellman: td error + entropy term
+                # Safety (avoid) Bellman backup -- defined in safety_sb3.backups
                 gs = replay_data.rewards  # immediate safety margin values g(s) from env rewards
                 not_done = 1.0 - replay_data.dones
-                v_to_go = th.minimum(gs, next_q_values)
-                target_q_values = (
-                    1.0 - self.gamma * not_done
-                ) * gs + self.gamma * not_done * v_to_go  # ensures that the full gs is returned at terminal states
+                target_q_values = backups.avoid_target(gs, next_q_values,
+                                                       not_done, self.gamma)
 
             # Get current Q-values estimates for each critic network
             # using action from the replay buffer

@@ -24,6 +24,7 @@ import torch as th
 import torch.nn.functional as F
 from stable_baselines3.common.utils import polyak_update
 
+from safety_sb3 import backups
 from safety_sb3.isaacs_buffers import ReachAvoidReplayBuffer
 from safety_sb3.safety_sac import SafetySAC
 
@@ -37,10 +38,13 @@ class ReachAvoidSAC(SafetySAC):
   ``train()`` below is unchanged."""
 
   _tensor_store_l = True  # tensor buffer stores l(s)
+  _MODE = backups.REACH_AVOID
 
-  def __init__(self, *args, replay_buffer_class=None, **kwargs) -> None:
+  def __init__(self, *args, replay_buffer_class=None,
+               terminal_type: str = "all", **kwargs) -> None:
     if replay_buffer_class is None:
       replay_buffer_class = ReachAvoidReplayBuffer
+    self.terminal_type = backups.check_terminal_type(terminal_type)
     super().__init__(*args, replay_buffer_class=replay_buffer_class, **kwargs)
     # On load (_init_setup_model=False) the buffer is built later; only validate
     # when it already exists. The tensor path builds its own l-carrying buffer.
@@ -97,15 +101,12 @@ class ReachAvoidSAC(SafetySAC):
         next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
         next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
 
-        # --- Reach-avoid Bellman backup ---
+        # --- Reach-avoid Bellman backup -- defined in safety_sb3.backups ---
         gs = replay_data.rewards  # g(s): safety / avoid margin
         lx = replay_data.l_x  # l(s): target / reach margin
         not_done = 1.0 - replay_data.dones
-        v_to_go = th.minimum(gs, th.maximum(lx, next_q_values))  # min(g, max(l, V'))
-        terminal_target = th.minimum(lx, gs)  # min(l, g)
-        target_q_values = (
-          1.0 - self.gamma * not_done
-        ) * terminal_target + self.gamma * not_done * v_to_go
+        target_q_values = backups.reach_avoid_target(
+          gs, lx, next_q_values, not_done, self.gamma, self.terminal_type)
 
       current_q_values = self.critic(
         replay_data.observations, replay_data.actions

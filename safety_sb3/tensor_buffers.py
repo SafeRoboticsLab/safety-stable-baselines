@@ -1,12 +1,9 @@
 """GPU-resident rollout buffers with the safety backups (torch twins of
 :mod:`safety_sb3.safety_buffers` — identical math, no numpy on the hot path).
 
-    Safety (avoid-only):   V(s) = min( g(s), V(s') )
-    Reach-avoid:           V(s) = min( g(s), max( l(s), V(s') ) )
-
-with the (1 - gamma*nt)*g + gamma*nt*(...) blend and the g terminal anchor —
-see the numpy buffers for the rationale (anchoring on min(g, l) stalls
-learning). ``get()`` yields standard ``RolloutBufferSamples`` whose fields are
+Both call the same operators as the numpy buffers, from
+:mod:`safety_sb3.backups`; ``tests/test_backups.py`` asserts exact parity.
+``get()`` yields standard ``RolloutBufferSamples`` whose fields are
 device tensors, so stock ``PPO.train()`` consumes them unchanged. ``values`` /
 ``returns`` are exposed as numpy properties (PPO's explained-variance logging
 touches them once per update).
@@ -20,6 +17,8 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 from stable_baselines3.common.buffers import RolloutBufferSamples
+
+from . import backups
 
 
 class TensorSafetyRolloutBuffer:
@@ -77,9 +76,10 @@ class TensorSafetyRolloutBuffer:
       self.full = True
 
   # --- backup ---------------------------------------------------------------
-  def _v_to_go(self, step: int, v_next: th.Tensor) -> th.Tensor:
-    g_t = self.rewards[step]
-    return th.minimum(g_t, v_next)
+  def _target(self, step: int, v_next: th.Tensor,
+              not_done: th.Tensor) -> th.Tensor:
+    return backups.avoid_target(self.rewards[step], v_next, not_done,
+                                self.gamma)
 
   @th.no_grad()
   def compute_returns_and_advantage(self, last_values: th.Tensor,
@@ -94,9 +94,7 @@ class TensorSafetyRolloutBuffer:
       else:
         next_non_terminal = 1.0 - self.episode_starts[step + 1]
         v_next = self._values[step + 1]
-      g_t = self.rewards[step]
-      target = (1.0 - self.gamma * next_non_terminal) * g_t \
-        + self.gamma * next_non_terminal * self._v_to_go(step, v_next)
+      target = self._target(step, v_next, next_non_terminal)
       delta = target - self._values[step]
       last_gae = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae
       self.advantages[step] = last_gae
@@ -124,15 +122,22 @@ class TensorSafetyRolloutBuffer:
 
 
 class TensorReachAvoidRolloutBuffer(TensorSafetyRolloutBuffer):
-  """Torch rollout buffer with the reach-avoid backup (adds ``l_x``)."""
+  """Torch rollout buffer with the reach-avoid backup (adds ``l_x``).
+
+  Torch twin of :class:`safety_sb3.safety_buffers.ReachAvoidRolloutBuffer`;
+  see it for the operator, the anchor rationale, and ``terminal_type``.
+  """
+
+  def __init__(self, *args, terminal_type: str = "all", **kwargs):
+    self.terminal_type = backups.check_terminal_type(terminal_type)
+    super().__init__(*args, **kwargs)
 
   def reset(self) -> None:
     super().reset()
     self.l_x = th.zeros(self.buffer_size, self.n_envs, device=self.device)
 
-  def _v_to_go(self, step: int, v_next: th.Tensor) -> th.Tensor:
-    g_t = self.rewards[step]
-    l_t = self.l_x[step]
-    # l enters through the recursive term ONLY; the blend/terminal anchor
-    # stays g (see safety_buffers.ReachAvoidRolloutBuffer).
-    return th.minimum(g_t, th.maximum(l_t, v_next))
+  def _target(self, step: int, v_next: th.Tensor,
+              not_done: th.Tensor) -> th.Tensor:
+    return backups.reach_avoid_target(self.rewards[step], self.l_x[step],
+                                      v_next, not_done, self.gamma,
+                                      self.terminal_type)
