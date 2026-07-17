@@ -10,6 +10,8 @@ the mjlab environment layer.
 
 ## Start here
 
+- **[Environments](environments/index.md)** — reference envs that ship with the
+  library (train in minutes on CPU), each with a GIF and a value-function figure.
 - **[API guide](API.md)** — the env contract, the 2×2 of learners, the backups, `terminal_type`.
 - **[Best practices](best-practices.md)** — training recipes and the pitfalls that cost real debugging.
 - **[Release notes](release-notes.md)** — what changed in v0.2.0 (breaking: the reach-avoid anchor fix + rename).

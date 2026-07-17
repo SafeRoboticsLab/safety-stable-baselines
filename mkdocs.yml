@@ -39,6 +39,8 @@ plugins:
             separate_signature: true
 
 markdown_extensions:
+  - attr_list
+  - md_in_html
   - admonition
   - pymdownx.superfences
   - pymdownx.details
@@ -49,6 +51,9 @@ markdown_extensions:
 nav:
   - Home: index.md
   - API guide: API.md
+  - Environments:
+      - Overview: environments/index.md
+      - Bicycle5D: environments/bicycle5d.md
   - Best practices: best-practices.md
   - Release notes: release-notes.md
   - Evaluation: eval.md
