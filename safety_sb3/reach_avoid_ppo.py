@@ -28,6 +28,7 @@ import numpy as np
 import torch as th
 from stable_baselines3.common.buffers import RolloutBuffer
 
+from . import backups
 from .safety_buffers import ReachAvoidRolloutBuffer
 from .safety_ppo import SafetyPPO
 from .tensor_buffers import TensorReachAvoidRolloutBuffer
@@ -38,20 +39,44 @@ class ReachAvoidPPO(SafetyPPO):
 
   numpy_rollout_buffer_class = ReachAvoidRolloutBuffer
   tensor_rollout_buffer_class = TensorReachAvoidRolloutBuffer
+  _MODE = backups.REACH_AVOID
+
+  @property
+  def _is_reach_avoid(self) -> bool:
+    """Does this class play the reach-avoid game (vs. the plain avoid game)?
+
+    Subclasses that flip ``_MODE`` to :data:`safety_sb3.backups.AVOID` (e.g.
+    :class:`~safety_sb3.isaacs_ppo.IsaacsPPO`) reuse every method here but have
+    no target set, so all ``l``-dependent machinery must switch off. In the PPO
+    family the backup itself is chosen by the rollout buffer, not by ``_MODE``;
+    ``_MODE`` gates the ``l``-plumbing that feeds it.
+    """
+    return self._MODE == backups.REACH_AVOID
 
   def _setup_model(self) -> None:
     super()._setup_model()
-    assert isinstance(
-      self.rollout_buffer, (ReachAvoidRolloutBuffer, TensorReachAvoidRolloutBuffer)
-    ), "ReachAvoidPPO requires a ReachAvoid rollout buffer (numpy or tensor)."
+    # Avoid-mode subclasses pair with the plain Safety buffers, which SafetyPPO
+    # has already validated; only the reach-avoid game needs an l-carrying one.
+    if self._is_reach_avoid:
+      assert isinstance(
+        self.rollout_buffer, (ReachAvoidRolloutBuffer, TensorReachAvoidRolloutBuffer)
+      ), "ReachAvoidPPO requires a ReachAvoid rollout buffer (numpy or tensor)."
 
   def _record_step_extras(self, rollout_buffer: RolloutBuffer, infos: list) -> None:
-    """Capture the target margin ``l(s)`` at the slot ``add()`` will fill."""
+    """Capture the target margin ``l(s)`` at the slot ``add()`` will fill.
+
+    No-op in avoid mode: the avoid buffers have no ``l_x`` and the game has no
+    target set.
+    """
+    if not self._is_reach_avoid:
+      return
     assert isinstance(rollout_buffer, ReachAvoidRolloutBuffer)
     rollout_buffer.l_x[rollout_buffer.pos] = np.array(
       [float(info.get("l_x", 0.0)) for info in infos], dtype=np.float32
     )
 
   def _record_step_extras_tensor(self, rollout_buffer, l_x: th.Tensor) -> None:
+    if not self._is_reach_avoid:
+      return
     assert isinstance(rollout_buffer, TensorReachAvoidRolloutBuffer)
     rollout_buffer.l_x[rollout_buffer.pos] = l_x.reshape(rollout_buffer.n_envs)

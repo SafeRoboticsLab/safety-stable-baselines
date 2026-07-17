@@ -1,22 +1,33 @@
-"""ISAACS: two-player reach-avoid safety RL on SB3 (increment 2).
+"""Two-player (adversarial) safety RL on SB3 — the SAC family.
 
 Control actor (max-player) and disturbance actor (min-player) share one twin
-critic over the full concatenated action ``Q(s, [a_ctrl, a_dstb])``, trained with
-the reach-avoid Bellman backup.  Each actor has its own entropy coefficient /
-target entropy (ctrl: ``-ctrl_dim``, dstb: ``-dstb_dim``).  Uses
-:class:`IsaacsPolicy` (two sub-space actors + full critic) and the
-:class:`ReachAvoidReplayBuffer` (stores ``l(s)``).
+critic over the full concatenated action ``Q(s, [a_ctrl, a_dstb])``.  Each actor
+has its own entropy coefficient / target entropy (ctrl: ``-ctrl_dim``, dstb:
+``-dstb_dim``).  Uses :class:`IsaacsPolicy` (two sub-space actors + full critic)
+and the :class:`ReachAvoidReplayBuffer` (stores ``l(s)``).
+
+Two classes, one per problem — the machinery is shared, only the backup differs
+(see :mod:`safety_sb3.backups`):
+
+* :class:`IsaacsSAC`  — two-player **avoid** game.  ISAACS proper
+  (Hsu et al. 2022, eq. 7): no target set, anchor ``g``.
+* :class:`GameplaySAC` — two-player **reach-avoid** game.  Gameplay Filters
+  (Hsu et al. 2024, eq. 6a), which extends ISAACS to reach-avoid: anchor
+  ``min(l, g)``.
 
 Soft max-min value used in the critic target::
 
     V'  = min(Q1', Q2')  - α_ctrl·logπ_ctrl(s')  + α_dstb·logπ_dstb(s')
-    y   = (1-γ)·min(l,g) + γ·min(g, max(l, V'))         (reach-avoid)
+    y   = backups.target(mode, g, V', ...)       (avoid | reach-avoid)
 
 (The ctrl entropy raises the value as a max-player bonus; the dstb entropy raises
 the min as a min-player softening — same convention as the base ``SafetySAC``
 adding ctrl entropy to ``next_q``; see the README TODO on this choice.)
 
-Leaderboard (sampling past ctrl/dstb checkpoints into rollouts) is increment 3.
+.. warning::
+   Before v0.2.0 ``IsaacsSAC`` was the *reach-avoid* game (now
+   :class:`GameplaySAC`) and there was no two-player avoid class. See
+   RELEASE_NOTES.md.
 """
 
 from __future__ import annotations
@@ -28,13 +39,21 @@ import torch as th
 import torch.nn.functional as F
 from stable_baselines3.common.utils import polyak_update
 
+from safety_sb3 import backups
 from safety_sb3.isaacs_policy import IsaacsPolicy
 from safety_sb3.leaderboard import Leaderboard
 from safety_sb3.reach_avoid_sac import ReachAvoidSAC
 
 
-class IsaacsSAC(ReachAvoidSAC):
+class GameplaySAC(ReachAvoidSAC):
+  """Two-player REACH-AVOID game — Gameplay Filters (eq. 6a).
+
+  Anchor ``min(l, g)``; needs a target margin ``l``. For a two-player *avoid*
+  game (no target set) use :class:`IsaacsSAC`.
+  """
+
   policy_aliases = {"MlpPolicy": IsaacsPolicy, "MultiInputPolicy": IsaacsPolicy}
+  _MODE = backups.REACH_AVOID
 
   def __init__(
     self,
@@ -305,14 +324,13 @@ class IsaacsSAC(ReachAvoidSAC):
           - ctrl_ent * next_ctrl_logp.reshape(-1, 1)
           + dstb_ent * next_dstb_logp.reshape(-1, 1)
         )
+        # Backup for THIS class's problem -- see safety_sb3.backups.
+        # GameplaySAC -> reach-avoid (eq. 6a); IsaacsSAC -> avoid (eq. 7).
         gs = rd.rewards
-        lx = rd.l_x
         not_done = 1.0 - rd.dones
-        v_to_go = th.minimum(gs, th.maximum(lx, next_q))
-        terminal_target = th.minimum(lx, gs)
-        target_q = (
-          1.0 - self.gamma * not_done
-        ) * terminal_target + self.gamma * not_done * v_to_go
+        target_q = backups.target(
+          self._MODE, gs, next_q, not_done, self.gamma,
+          l=getattr(rd, "l_x", None), terminal_type=self.terminal_type)
 
       current_q = self.critic(rd.observations, rd.actions)
       critic_loss = 0.5 * sum(F.mse_loss(cq, target_q) for cq in current_q)
@@ -382,3 +400,23 @@ class IsaacsSAC(ReachAvoidSAC):
       state_dicts += ["dstb_ent_coef_optimizer"]
       others += ["dstb_log_ent_coef"]
     return state_dicts, others
+
+
+class IsaacsSAC(GameplaySAC):
+  """Two-player AVOID game — ISAACS proper (Hsu et al. 2022, eq. 7).
+
+  ``V(s) = (1-γ)·g + γ·max_ctrl min_dstb min(g, V')``: the robust-invariance
+  value under a worst-case disturbance. No target set, no ``l`` — the paper has
+  neither.
+
+  This is the class to use for an adversarial *avoid* task (e.g. "stay standing
+  against a worst-case force"). Do NOT emulate it by giving
+  :class:`GameplaySAC` a degenerate ``l``: no ``l`` reduces the reach-avoid
+  operator to avoid (:mod:`safety_sb3.backups` proves the two conditions are
+  contradictory), and the constant-``l`` trick that appeared to work before
+  v0.2.0 relied on a bug in the reach-avoid anchor.
+
+  ``l`` is ignored if present, so an ``l``-carrying replay buffer is harmless.
+  """
+
+  _MODE = backups.AVOID
