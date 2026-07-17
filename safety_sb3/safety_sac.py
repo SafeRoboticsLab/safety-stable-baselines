@@ -68,6 +68,18 @@ class SafetySAC(SAC):
             env, callback, train_freq, replay_buffer, action_noise=action_noise,
             learning_starts=learning_starts, log_interval=log_interval)
 
+    def _tensor_policy_actions(self, obs: "th.Tensor") -> "th.Tensor":
+        """Post-warmup policy actions for the tensor collect: on device, in the
+        env's action range, shape ``(num_envs, action_dim)``.
+
+        Single-player: the ctrl actor. Two-player games (GameplaySAC / IsaacsSAC)
+        override this to sample BOTH players and concatenate ``[a_ctrl, a_dstb]``
+        so the composed action matches the env's ``ctrl_dim + dstb_dim`` action
+        space (the numpy-path analog is :meth:`GameplaySAC._sample_action`).
+        """
+        with th.no_grad():
+            return self.actor(obs, deterministic=False)
+
     def _collect_rollouts_tensor(self, env, callback, train_freq: TrainFreq,
                                  replay_buffer, learning_starts=0,
                                  log_interval=None) -> RolloutReturn:
@@ -100,8 +112,7 @@ class SafetySAC(SAC):
                 actions = low + (high - low) * th.rand(
                     (env.num_envs, low.shape[0]), device=dev)
             else:
-                with th.no_grad():
-                    actions = self.actor(obs, deterministic=False)
+                actions = self._tensor_policy_actions(obs)
             actions = th.clamp(actions, low, high)
 
             new_obs, g, dones, timeouts, l_x = env.step_tensor(actions)
