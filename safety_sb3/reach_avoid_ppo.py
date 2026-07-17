@@ -35,11 +35,31 @@ from .tensor_buffers import TensorReachAvoidRolloutBuffer
 
 
 class ReachAvoidPPO(SafetyPPO):
-  """PPO with the reach-avoid Bellman backup (g = reward, l = info["l_x"])."""
+  """PPO with the reach-avoid Bellman backup (g = reward, l = info["l_x"]).
+
+  :param terminal_type: how terminal steps are valued -- ``"all"`` (default) ->
+      ``min(l, g)``, the reach-avoid horizon terminal condition; ``"g"`` -> ``g``.
+      See :func:`safety_sb3.backups.reach_avoid_target`. A first-class kwarg here
+      (forwarded to the rollout buffer), mirroring :class:`ReachAvoidSAC`; it is
+      the *algorithm-side* half of the pairing with the environment's
+      ``end_criterion``. It is ignored in avoid mode (``IsaacsPPO``), whose
+      buffer has no ``l``.
+  """
 
   numpy_rollout_buffer_class = ReachAvoidRolloutBuffer
   tensor_rollout_buffer_class = TensorReachAvoidRolloutBuffer
   _MODE = backups.REACH_AVOID
+
+  def __init__(self, *args, terminal_type: str = "all",
+               rollout_buffer_kwargs=None, **kwargs):
+    backups.check_terminal_type(terminal_type)
+    rollout_buffer_kwargs = dict(rollout_buffer_kwargs or {})
+    # Only the reach-avoid buffers accept terminal_type; the avoid buffers
+    # (IsaacsPPO) do not, so do not inject it there.
+    if self._MODE == backups.REACH_AVOID:
+      rollout_buffer_kwargs.setdefault("terminal_type", terminal_type)
+    self.terminal_type = terminal_type
+    super().__init__(*args, rollout_buffer_kwargs=rollout_buffer_kwargs, **kwargs)
 
   @property
   def _is_reach_avoid(self) -> bool:

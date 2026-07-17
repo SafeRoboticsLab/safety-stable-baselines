@@ -73,3 +73,23 @@ class _SingleEnv(gym.Env):
 class _TwoPlayerEnv(_SingleEnv):
   # one concatenated Box(ctrl + dstb), split by ctrl_action_dim
   action_space = gym.spaces.Box(-1, 1, (2,), dtype=np.float32)
+
+
+def test_terminal_type_is_first_class_on_ppo():
+  """terminal_type reaches the buffer as a constructor kwarg (not just via
+  rollout_buffer_kwargs), mirroring ReachAvoidSAC."""
+  for tt in ("all", "g"):
+    m = ReachAvoidPPO("MlpPolicy", _SingleEnv(), terminal_type=tt,
+                      n_steps=32, batch_size=32, device="cpu")
+    assert m.rollout_buffer.terminal_type == tt, (tt, m.rollout_buffer.terminal_type)
+  # invalid value rejected at construction
+  try:
+    ReachAvoidPPO("MlpPolicy", _SingleEnv(), terminal_type="bogus",
+                  n_steps=32, batch_size=32, device="cpu")
+    raise AssertionError("expected ValueError")
+  except ValueError:
+    pass
+  # avoid learner does not carry it into its Safety buffer
+  m = IsaacsPPO("MlpPolicy", _TwoPlayerEnv(), ctrl_action_dim=1,
+                n_steps=32, batch_size=32, device="cpu")
+  assert not hasattr(m.rollout_buffer, "terminal_type")
