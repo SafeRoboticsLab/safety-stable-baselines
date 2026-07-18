@@ -271,6 +271,25 @@ class GameplaySAC(ReachAvoidSAC):
     action = self.policy.unscale_action(scaled)
     return action, buffer_action
 
+  # --- tensor-path rollout: same ctrl+dstb concatenation, on device ---
+  def _tensor_policy_actions(self, obs: th.Tensor) -> th.Tensor:
+    """Two-player tensor collect: sample ctrl + dstb and concatenate to the
+    env's ``ctrl_dim + dstb_dim`` action. The GPU-resident analog of
+    :meth:`_sample_action` (numpy path); without it the base single-player
+    collect samples ctrl only and mismatches the env's action space. The dstb
+    is the leaderboard-sampled opponent when active, else the current dstb actor
+    (mirrors the numpy path). Actors output in [-1, 1] and the env action space
+    is [-1, 1], so no unscaling is needed — the collect loop clamps to bounds.
+    """
+    dstb_net = (
+      self._rollout_dstb if getattr(self, "_rollout_dstb", None) is not None
+      else self.policy.dstb_actor
+    )
+    with th.no_grad():
+      ctrl = self.policy.actor(obs, deterministic=False)
+      dstb = dstb_net(obs, deterministic=False)
+    return th.cat([ctrl, dstb], dim=1)
+
   # --- entropy-coefficient helper ---
   def _alpha(self, log_coef, optimizer, coef_tensor, target_entropy, log_prob):
     if log_coef is not None and optimizer is not None:

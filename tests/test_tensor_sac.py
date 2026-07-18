@@ -169,9 +169,102 @@ def test_reach_avoid_sac_learns():
           f"actor (torch-init variance); value structure verified above.")
 
 
+class TwoPlayerDoubleIntegratorEnv(TensorVecEnv):
+  """Two-player double integrator: ctrl pushes, a bounded dstb perturbs.
+
+  Action = ``[a_ctrl, a_dstb]`` (a ``ctrl_dim + dstb_dim`` = 2-D Box), the shape
+  GameplaySAC / IsaacsSAC must compose on the tensor collect. Same g/l as the
+  single-player env, plus the disturbance term in the dynamics.
+  """
+
+  def __init__(self, num_envs=64, device=DEV, dstb_force=1.5):
+    obs_space = spaces.Box(-10, 10, shape=(2,), dtype="float32")
+    act_space = spaces.Box(-1, 1, shape=(2,), dtype="float32")  # ctrl(1)+dstb(1)
+    super().__init__(num_envs, obs_space, act_space, device)
+    self.dstb_force = dstb_force
+    self.x = th.zeros(num_envs, device=device)
+    self.v = th.zeros(num_envs, device=device)
+    self.t = th.zeros(num_envs, device=device)
+
+  def _obs(self):
+    return th.stack([self.x, self.v], dim=1)
+
+  def _reset_ids(self, ids):
+    n = int(ids.sum())
+    self.x[ids] = th.rand(n, device=self.device) * 1.6 - 0.8
+    self.v[ids] = th.rand(n, device=self.device) * 1.0 - 0.5
+    self.t[ids] = 0.0
+
+  def reset(self):
+    self._reset_ids(th.ones(self.num_envs, dtype=th.bool, device=self.device))
+    return self._obs()
+
+  def step_tensor(self, actions):
+    a_c = actions[:, 0].clamp(-1, 1)
+    a_d = actions[:, 1].clamp(-1, 1)
+    self.x = self.x + self.v * DT
+    self.v = self.v + (3.0 * a_c + self.dstb_force * a_d) * DT
+    self.t = self.t + 1
+    g = 1.0 - self.x.abs()
+    l = 0.2 - (self.x - 0.5).abs()
+    terminated = g < 0
+    truncated = (self.t >= TIMEOUT) & ~terminated
+    dones = terminated | truncated
+    if bool(dones.any()):
+      self._reset_ids(dones)
+    return self._obs(), g, dones, truncated, l
+
+
+def _train_two_player(algo_cls, steps=120_000, **kw):
+  env = TwoPlayerDoubleIntegratorEnv()
+  model = algo_cls(
+    "MlpPolicy", env, ctrl_action_dim=1,
+    buffer_size=100_000, batch_size=1024, learning_starts=2_000,
+    train_freq=1, gradient_steps=8, gamma=0.95, learning_rate=3e-4,
+    policy_kwargs=dict(net_arch=[64, 64]), verbose=0, device=DEV, seed=0, **kw)
+  model.learn(total_timesteps=steps, log_interval=None)
+  return model, env
+
+
+def _two_player_q(model, s):
+  """Q(s, [a_ctrl, a_dstb]) at the players' deterministic actions."""
+  with th.no_grad():
+    c = model.policy.actor(s, deterministic=True)
+    d = model.policy.dstb_actor(s, deterministic=True)
+    return th.cat(model.critic(s, th.cat([c, d], dim=1)), dim=1).min()
+
+
+def test_gameplay_sac_tensor_learns():
+  """Two-player REACH-AVOID on the tensor path. The hard claim is that the
+  collect COMPOSES ctrl+dstb (without it the run crashes on the action-dim
+  mismatch) and stores the full action; plus a lenient value-structure check."""
+  model, env = _train_two_player(__import__("safety_sb3").GameplaySAC)
+  # composition proof: the replay stores the FULL 2-D [ctrl, dstb] action.
+  s = model.replay_buffer.sample(64)
+  assert s.actions.shape[1] == 2, \
+    f"replay must store composed ctrl+dstb action, got dim {s.actions.shape[1]}"
+  q_on = _two_player_q(model, th.tensor([[0.5, 0.0]], device=DEV))   # at target
+  q_off = _two_player_q(model, th.tensor([[0.95, 1.0]], device=DEV))  # edge, out
+  print(f"[ok] GameplaySAC tensor: V(target)={q_on:+.3f} V(edge,out)={q_off:+.3f}")
+  assert q_on > q_off + 0.1, "no target/boundary separation in the RA value"
+
+
+def test_isaacs_sac_tensor_learns():
+  """Two-player AVOID (ISAACS proper) on the tensor path."""
+  model, env = _train_two_player(__import__("safety_sb3").IsaacsSAC)
+  s = model.replay_buffer.sample(64)
+  assert s.actions.shape[1] == 2
+  q_safe = _two_player_q(model, th.tensor([[0.0, 0.0]], device=DEV))
+  q_bad = _two_player_q(model, th.tensor([[0.95, 1.0]], device=DEV))
+  print(f"[ok] IsaacsSAC tensor: V(center)={q_safe:+.3f} V(edge,out)={q_bad:+.3f}")
+  assert q_safe > q_bad + 0.1, "no safe/unsafe separation in the avoid value"
+
+
 if __name__ == "__main__":
   th.manual_seed(0)
   test_buffer_semantics()
   test_safety_sac_learns()
   test_reach_avoid_sac_learns()
+  test_gameplay_sac_tensor_learns()
+  test_isaacs_sac_tensor_learns()
   print("ALL TENSOR-SAC TESTS PASSED")
