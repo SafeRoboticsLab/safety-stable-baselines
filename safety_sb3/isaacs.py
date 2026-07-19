@@ -234,6 +234,12 @@ class GameplaySAC(ReachAvoidSAC):
     """
     env = self._lb_eval_env
     dn = self.policy.dstb_action_dim
+    if getattr(env, "is_tensor_env", False):
+      # GPU-resident eval: step_tensor on-device, NO numpy VecEnv + no per-step
+      # host<->device sync. This is ~10-50x faster than the numpy path and is the
+      # main leaderboard-throughput fix (profiling: the numpy _eval_pair_vec was
+      # ~100s per _leaderboard_step). Same success semantics as _eval_pair_vec.
+      return self._eval_pair_tensor(env, ctrl_actor, dstb_actor, dn)
     if hasattr(env, "num_envs") and hasattr(env, "step_async"):
       return self._eval_pair_vec(env, ctrl_actor, dstb_actor, dn)
 
@@ -290,6 +296,43 @@ class GameplaySAC(ReachAvoidSAC):
       hits = ep_safe if not self._is_reach_avoid else (ep_safe & ep_reached)
       total_succ += int(hits.sum())
       total += n_env
+    return total_succ / max(total, 1)
+
+  @th.no_grad()
+  def _eval_pair_tensor(self, env, ctrl_actor, dstb_actor, dn) -> float:
+    """GPU-resident twin of ``_eval_pair_vec``: rolls out on a RAW tensor eval env
+    via ``step_tensor`` — everything stays on device, no numpy VecEnv and no
+    per-step host<->device sync. Obs are normalized with the LIVE training
+    normalizer (``self.env.normalize_obs``) each step, so no stats to sync; the
+    margins g/l are physical (unnormalized) and drive safe/reached. Same success
+    semantics (avoid = never g<0; reach-avoid = that AND ever l>=0). Actors output
+    [-1,1] and the env clamps, so no unscale (mirrors _tensor_policy_actions)."""
+    dev = env.device
+    n = env.num_envs
+    norm = self.env if hasattr(self.env, "normalize_obs") else None
+    total_succ, total = 0, 0
+    for _ in range(max(1, self.n_eval_episodes)):
+      raw = env.reset()
+      if not th.is_tensor(raw):
+        raw = th.as_tensor(np.asarray(raw), dtype=th.float32, device=dev)
+      ep_safe = th.ones(n, dtype=th.bool, device=dev)
+      ep_reached = th.zeros(n, dtype=th.bool, device=dev)
+      done_once = th.zeros(n, dtype=th.bool, device=dev)
+      for _ in range(self._LB_MAX_STEPS):
+        obs = norm.normalize_obs(raw) if norm is not None else raw
+        c = ctrl_actor(obs, deterministic=True)
+        d = (th.zeros((n, dn), device=dev) if dstb_actor is None
+             else dstb_actor(obs, deterministic=True))
+        raw, g, dones, _timeouts, l_x = env.step_tensor(th.cat([c, d], dim=1))
+        active = ~done_once
+        ep_safe &= ~(active & (g.reshape(n) < 0))
+        ep_reached |= active & (l_x.reshape(n) >= 0)
+        done_once |= active & dones.reshape(n).bool()
+        if bool(done_once.all()):
+          break
+      hits = ep_safe if not self._is_reach_avoid else (ep_safe & ep_reached)
+      total_succ += int(hits.sum().item())
+      total += n
     return total_succ / max(total, 1)
 
   def _leaderboard_step(self) -> None:
