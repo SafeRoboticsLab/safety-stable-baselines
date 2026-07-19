@@ -93,6 +93,23 @@ sampled by a softmax over pairwise reach-avoid success scores.
 | `n_eval_episodes` | `10` | eval batches per pairing (effective trajectories = `num_envs * n_eval_episodes` on a vec eval env) |
 | `save_top_k_ctrl` / `save_top_k_dstb` | `5` / `5` | league size per player |
 
+> **⚡ Throughput — the league eval can dominate wall-clock.** Each `_leaderboard_step`
+> runs `~(nc+nd+2)` pairings, and each pairing steps the sim `n_eval_episodes × episode_len`
+> times. Profiling a two-player GameplaySAC found ONE `_leaderboard_step` ≈ **100 s** vs a
+> ~90 ms train cycle — the league was **~97 % of wall-clock** at 1024 envs with the old
+> `leaderboard_freq=10_000` / `n_eval_episodes=10`, capping throughput at ~500 FPS. The cost is
+> the **volume of sim steps**, not the obs transport. Two levers, both safety-neutral (the league
+> is a *relative* ranking):
+>
+> 1. **Raise `leaderboard_freq`** — 10k→2M fires ~200× less often. 2. **Lower `n_eval_episodes`**
+>    — 10→3 cuts each firing ~3×. 3. **Pass a `TensorVecEnv` eval env** — dispatches to the
+>    on-device `_eval_pair_tensor` (no numpy VecEnv, no per-step host↔device sync; obs normalized
+>    via the live training normalizer).
+>
+> Together these took a 1024-env GameplaySAC from **~500 → ~19,000 FPS (~30×)** — a 100 M-step run
+> from ~55 h to ~1.5 h. The zoo `examples/train_sac.py` uses these throughput defaults
+> (`--leaderboard-freq 2_000_000 --leaderboard-episodes 3`, raw tensor eval env).
+
 ## Safe-rate / success-rate evaluation
 
 `SafeSuccessRateEvalCallback` logs `eval/safe_rate`, `eval/success_rate`,

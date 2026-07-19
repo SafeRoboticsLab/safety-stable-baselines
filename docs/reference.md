@@ -13,6 +13,28 @@ conceptual contract.
     options:
       members: [ReachAvoidPPO]
 
+## Off-policy learners (SAC family)
+
+::: safety_sb3.reach_avoid_sac
+    options:
+      members: [ReachAvoidSAC]
+
+::: safety_sb3.isaacs
+    options:
+      members: [GameplaySAC, IsaacsSAC]
+
+## Discount (gamma) annealing
+
+::: safety_sb3.gamma_anneal
+    options:
+      members: [StepGammaAnneal, GeometricGammaAnneal, GammaAnnealMixin, make_default_gamma_schedule]
+
+## Evaluation callbacks
+
+::: safety_sb3.eval_callbacks
+    options:
+      members: [SafeSuccessRateEvalCallback]
+
 ## Rollout buffers
 
 ::: safety_sb3.safety_buffers

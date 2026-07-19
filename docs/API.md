@@ -172,10 +172,42 @@ from safety_sb3 import (
     # buffers / policy / callbacks
     SafetyRolloutBuffer, ReachAvoidRolloutBuffer,
     ReachAvoidReplayBuffer, IsaacsPolicy, StdCapCallback,
+    SafeSuccessRateEvalCallback,
+    # discount (gamma) annealing — ON by default in every Safety* learner
+    GammaAnnealMixin, StepGammaAnneal, GeometricGammaAnneal,
+    make_default_gamma_schedule,
     # the operators
     backups,
 )
 ```
+
+### Training controls (see [hyperparameters.md](hyperparameters.md))
+
+Every learner takes these as constructor arguments (defaults matched to the
+reference ISAACS codebase):
+
+- **`gamma_anneal`** (default `True`) — discount annealing, **on by default** for
+  every learner (PPO and SAC families). The reach-avoid boundary only sharpens as
+  γ→1, so γ is annealed from a contractive start. Default = the reference-faithful
+  discrete-jump `StepGammaAnneal` (0.99 → 0.999 @20% → 0.9999 @40%, hold); each
+  jump resets the entropy temperature on the SAC learners. `GeometricGammaAnneal`
+  is the smooth variant; `False` keeps γ constant. Logged as `train/gamma`.
+- **`min_alpha` / `max_alpha`** (SAC, default floor `1e-3`) — clamp the learned
+  entropy temperature (SB3's auto-α is otherwise unbounded).
+- **Per-agent learning rates** (two-player SAC) — `critic_learning_rate`,
+  `dstb_learning_rate`, `ent_coef_lr`, `dstb_ent_coef_lr` (each `None` → the shared
+  `learning_rate`), plus an optional StepLR decay (`lr_schedule`/`lr_period`/…).
+- **Leaderboard** (two-player) — `use_leaderboard`, `leaderboard_freq`,
+  `n_eval_episodes`, `softmax_rationality`. **Throughput note:** the league eval
+  cost scales with `n_eval_episodes × pairings × episode_len × (1/freq)` and can
+  dominate wall-clock (~97% at 1024 envs with the old 100k-freq / 10-episode
+  settings). Pass a **`TensorVecEnv`** leaderboard eval env (dispatches to the
+  on-device `_eval_pair_tensor` — no numpy VecEnv, no per-step host↔device sync)
+  and prefer a **high `leaderboard_freq`** (e.g. 2M) with **few `n_eval_episodes`**
+  (e.g. 3) — the league is a relative ranking. This was a ~30× throughput lever at
+  1024 envs (≈500 → ≈19k FPS).
+- **`SafeSuccessRateEvalCallback`** — logs `eval/safe_rate` and
+  `eval/success_rate` over N rollouts (reach-avoid vs avoid-only aware).
 
 ### Two-player learners
 
