@@ -1,5 +1,42 @@
 # Release notes
 
+## v0.3.0 — two-player SAC + reference-faithful discount annealing
+
+Additive release (no anchor/API breakage vs v0.2.x), with **one behavioral default
+change**: reach-avoid learners now **anneal the discount `γ` by default**. Retrain
+to benefit; pin the schedule off (`gamma_schedule=None`) to reproduce v0.2.x exactly.
+
+### 1. Two-player SAC on the tensor path
+`GameplaySAC` (two-player **reach-avoid**, Gameplay Filters eq. 6a) and `IsaacsSAC`
+(two-player **avoid**, ISAACS) — the off-policy analog of `GameplayPPO`/`IsaacsPPO`:
+a twin critic over the concatenated `[ctrl, dstb]` action, two soft actors, two
+entropy temperatures, the safety/reach-avoid backup, and a self-play leaderboard.
+
+### 2. Discount (γ) annealing — ON by default
+Ports `safe_adaptation_dev`'s reference-faithful schedule. `StepGammaAnneal`
+(discrete jumps `0.99 → 0.999 → 0.9999`, the default) and `GeometricGammaAnneal`
+(continuous), via a `GammaAnnealMixin` across the PPO **and** SAC families. On each
+discrete jump the entropy temperature `α` is **reset** (re-exploration) and floored
+at `min_alpha`. This is what let two-player RA-SAC recover/beat the reference on
+`go2_stabilize`.
+
+### 3. Per-agent LR / entropy controls (two-player SAC)
+Independent `critic_lr` / `dstb_lr` / `ent_coef_lr` / `dstb_ent_coef_lr`, fixed or
+`StepLR` schedules, and a `min_alpha`/`max_alpha` entropy-temperature clamp.
+
+### 4. Leaderboard throughput — on-device league eval
+`_eval_pair_tensor` runs the self-play pairing evaluation entirely on-device
+(no numpy `VecEnv` round-trip). With throughput-tuned defaults (larger eval
+interval, fewer episodes) this is ~30× faster at 1024 envs — the leaderboard no
+longer stalls collection.
+
+### 5. Eval + reference env
+`SafeSuccessRateEvalCallback` logs safe-rate / success-rate to wandb. Added the
+`Bicycle5D` reference reach-avoid environment + docs showreel. Full knob reference
+in `docs/hyperparameters.md`.
+
+---
+
 ## v0.2.0 — the reach-avoid anchor fix (BREAKING; retraining required)
 
 **If you trained a reach-avoid or ISAACS policy with v0.1.0, its value function is
