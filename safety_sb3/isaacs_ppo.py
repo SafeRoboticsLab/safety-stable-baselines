@@ -408,6 +408,9 @@ class GameplayPPO(ReachAvoidPPO):
   ) -> bool:
     """Two-player rollout: both actions computed each step, env receives the
     concatenation, only the ACTIVE player's data is stored (in its buffer)."""
+    # This override does not call the SafetyPPO base, so anneal gamma here; the
+    # helper updates both the ctrl and dstb rollout buffers (idempotent).
+    self._apply_gamma_anneal()
     if self._tensor_path:
       return self._collect_rollouts_tensor(env, callback, rollout_buffer,
                                            n_rollout_steps)

@@ -92,12 +92,17 @@ def test_buffer_semantics():
 
 
 def _train(algo_cls, steps=150_000, **kw):
+  # gamma_anneal=False: these assert the CONVERGED value STRUCTURE of the backup
+  # math at a fixed gamma=0.95 on a small (150k-step) toy. The default anneal
+  # (gamma -> 0.9999 by 50%) needs far more budget to converge the high-gamma
+  # fixed point (esp. the pure-avoid value), so it under-converges here and
+  # muddies the check. Annealing is validated on its own in test_gamma_anneal.py.
   env = DoubleIntegratorEnv()
   model = algo_cls(
     "MlpPolicy", env, buffer_size=100_000, batch_size=1024,
     learning_starts=2_000, train_freq=1, gradient_steps=8, gamma=0.95,
     learning_rate=3e-4, policy_kwargs=dict(net_arch=[64, 64]), verbose=0,
-    device=DEV, seed=0, **kw)  # seed: keep the run deterministic per-machine
+    device=DEV, seed=0, gamma_anneal=False, **kw)  # seed: deterministic per-machine
   model.learn(total_timesteps=steps, log_interval=None)
   return model, env
 
@@ -216,12 +221,16 @@ class TwoPlayerDoubleIntegratorEnv(TensorVecEnv):
 
 
 def _train_two_player(algo_cls, steps=120_000, **kw):
+  # gamma_anneal=False: same rationale as _train -- assert the two-player backup +
+  # ctrl/dstb COMPOSITION value structure at fixed gamma=0.95; the default anneal
+  # under-converges this toy budget. Annealing has its own coverage.
   env = TwoPlayerDoubleIntegratorEnv()
   model = algo_cls(
     "MlpPolicy", env, ctrl_action_dim=1,
     buffer_size=100_000, batch_size=1024, learning_starts=2_000,
     train_freq=1, gradient_steps=8, gamma=0.95, learning_rate=3e-4,
-    policy_kwargs=dict(net_arch=[64, 64]), verbose=0, device=DEV, seed=0, **kw)
+    policy_kwargs=dict(net_arch=[64, 64]), verbose=0, device=DEV, seed=0,
+    gamma_anneal=False, **kw)
   model.learn(total_timesteps=steps, log_interval=None)
   return model, env
 

@@ -7,9 +7,10 @@ from stable_baselines3.common.type_aliases import RolloutReturn, TrainFreq
 from stable_baselines3.common.utils import polyak_update, should_collect_more_steps
 
 from . import backups
+from .gamma_anneal import GammaAnnealMixin
 
 
-class SafetySAC(SAC):
+class SafetySAC(GammaAnnealMixin, SAC):
     """We subclass SAC to reuse the actor, entropy regularization, replay buffer, etc.
 
     GPU-resident path: pass a ``TensorVecEnv`` (detected via ``is_tensor_env``,
@@ -24,7 +25,9 @@ class SafetySAC(SAC):
 
     _tensor_store_l = False  # ReachAvoidSAC flips this (buffer stores l_x)
 
-    def __init__(self, *args, normalize_obs: bool = False, **kwargs):
+    def __init__(self, *args, normalize_obs: bool = False, gamma_anneal=True,
+                 min_alpha: float | None = 1e-3, max_alpha: float | None = None,
+                 **kwargs):
         from .safety_ppo import _guard_and_normalize_env
         if "env" in kwargs:
             kwargs["env"] = _guard_and_normalize_env(kwargs["env"], normalize_obs)
@@ -33,11 +36,23 @@ class SafetySAC(SAC):
             args[1] = _guard_and_normalize_env(args[1], normalize_obs)
         _env = kwargs.get("env", args[1] if len(args) >= 2 else None)
         self._tensor_path = bool(getattr(_env, "is_tensor_env", False))
+        # Entropy-temperature (alpha) FLOOR/ceiling (reference: min_alpha=1e-3).
+        # SB3's auto-entropy is unbounded; a floor stops alpha collapsing to ~0
+        # (deterministic, no exploration) esp. after a gamma-jump alpha reset.
+        # Set before super().__init__ -> _setup_model reads them.
+        self._min_alpha = None if min_alpha is None else float(min_alpha)
+        self._max_alpha = None if max_alpha is None else float(max_alpha)
         super().__init__(*args, **kwargs)
+        # Discount-factor annealing (ON by default): the REFERENCE-FAITHFUL
+        # discrete-jump schedule (gamma 0.99 -> 0.999 @20% -> 0.9999 @40%, hold);
+        # each jump resets alpha via _on_gamma_jump (Q-scale shift). self.gamma is
+        # read in the TD target of train(). See gamma_anneal.py.
+        self._setup_gamma_anneal(gamma_anneal)
 
     def _setup_model(self) -> None:
         if not self._tensor_path:
             super()._setup_model()
+            self._setup_entropy_bounds()
             return
         from .tensor_replay import TensorReplayBuffer
         # Keep the numpy buffer SB3 allocates in _setup_model negligible, then
@@ -54,12 +69,68 @@ class SafetySAC(SAC):
             device=str(self.device),
             store_l=self._tensor_store_l,
         )
+        self._setup_entropy_bounds()
+
+    # --- entropy-temperature (alpha) bounds + reset (issues 6 & 7) -----------
+    def _setup_entropy_bounds(self) -> None:
+        """Compute the log-space alpha clamp bounds and snapshot the init
+        log_ent_coef (so a gamma jump can reset alpha to it)."""
+        import math
+        self._log_min_alpha = (None if self._min_alpha is None
+                               else math.log(self._min_alpha))
+        self._log_max_alpha = (None if self._max_alpha is None
+                               else math.log(self._max_alpha))
+        lec = getattr(self, "log_ent_coef", None)   # None for a FIXED ent_coef
+        self._init_log_ent_coef = None if lec is None else lec.detach().clone()
+
+    def _clamp_entropy_temps(self) -> None:
+        """Clamp the learned entropy temperature into [min_alpha, max_alpha].
+        Called after each entropy-coefficient optimizer step in train()."""
+        if self._log_min_alpha is None and self._log_max_alpha is None:
+            return
+        lec = getattr(self, "log_ent_coef", None)
+        if lec is not None:
+            with th.no_grad():
+                lec.clamp_(min=self._log_min_alpha, max=self._log_max_alpha)
+
+    def _entropy_optimizer_lr(self) -> float:
+        """LR for the (ctrl) entropy-coefficient optimizer. Falls back to the
+        shared ``learning_rate`` when no dedicated ``ent_coef_lr`` was set
+        (GameplaySAC/IsaacsSAC set ``self._ent_coef_lr``); keeps a rebuilt
+        optimizer on the configured entropy lr rather than the shared one."""
+        lr = getattr(self, "_ent_coef_lr", None)
+        return float(self.lr_schedule(1)) if lr is None else float(lr)
+
+    def _reset_entropy_temp(self) -> None:
+        """Reset the learned entropy temperature to its init value and rebuild
+        its optimizer (clears Adam moments) -- the reference alpha reset on a
+        gamma jump. No-op for a fixed ent_coef."""
+        lec = getattr(self, "log_ent_coef", None)
+        if lec is None or self._init_log_ent_coef is None:
+            return
+        with th.no_grad():
+            lec.data.copy_(self._init_log_ent_coef)
+        if getattr(self, "ent_coef_optimizer", None) is not None:
+            self.ent_coef_optimizer = th.optim.Adam(
+                [lec], lr=self._entropy_optimizer_lr())
+
+    def _on_gamma_jump(self, old_gamma: float, new_gamma: float) -> None:
+        """A discrete gamma jump shifts the Q-scale, so the tuned entropy
+        temperature is stale -> reset it (reference: reset alpha on every jump)."""
+        self._reset_entropy_temp()
+        logger = getattr(self, "logger", None)
+        if logger is not None:
+            logger.record("train/alpha_reset_gamma", float(new_gamma))
 
     # --- tensor collection ---------------------------------------------------
 
     def collect_rollouts(self, env, callback, train_freq: TrainFreq,
                          replay_buffer, action_noise=None, learning_starts=0,
                          log_interval=None) -> RolloutReturn:
+        # Anneal self.gamma before the train() that follows this collection reads
+        # it in the TD target. The tensor path bypasses SB3's
+        # _update_current_progress_remaining, so apply it here (idempotent).
+        self._apply_gamma_anneal()
         if self._tensor_path:
             return self._collect_rollouts_tensor(
                 env, callback, train_freq, replay_buffer,
@@ -207,6 +278,7 @@ class SafetySAC(SAC):
                 self.ent_coef_optimizer.zero_grad()
                 ent_coef_loss.backward()
                 self.ent_coef_optimizer.step()
+                self._clamp_entropy_temps()  # min_alpha/max_alpha floor/ceiling
 
             with th.no_grad():
                 # Select action according to policy

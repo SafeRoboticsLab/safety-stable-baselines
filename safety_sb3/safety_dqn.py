@@ -4,13 +4,21 @@ import torch.nn.functional as F
 
 from stable_baselines3.dqn.dqn import DQN
 
+from .gamma_anneal import GammaAnnealMixin
 
-class SafetyDQN(DQN):
+
+class SafetyDQN(GammaAnnealMixin, DQN):
     """Safety DQN.
+
+    ``gamma_anneal`` (ON by default) anneals the discount 0.99 -> 0.9999 over the
+    first 50% of training (read as ``self.gamma`` in the TD target of
+    ``train()``); the numpy off-policy loop applies it via
+    ``_update_current_progress_remaining``. See ``gamma_anneal.py``.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, gamma_anneal=True, **kwargs):
         super().__init__(*args, **kwargs)
+        self._setup_gamma_anneal(gamma_anneal)
 
     def train(self, gradient_steps: int, batch_size: int) -> None:
         """Largely follows the original DQN train method from stable_baselines3.

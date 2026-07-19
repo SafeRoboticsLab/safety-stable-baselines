@@ -33,11 +33,15 @@ from .isaacs import GameplaySAC, IsaacsSAC
 from .safety_buffers import ReachAvoidRolloutBuffer
 from .reach_avoid_ppo import ReachAvoidPPO
 from .isaacs_ppo import GameplayPPO, IsaacsPPO
+from .gamma_anneal import (GammaAnnealMixin, GeometricGammaAnneal,
+                           StepGammaAnneal, make_default_gamma_schedule)
 from .callbacks import StdCapCallback
+from .eval_callbacks import SafeSuccessRateEvalCallback
 
 __all__ = [
     "backups",
     "StdCapCallback",
+    "SafeSuccessRateEvalCallback",
     # --- single-player, avoid ---
     "SafetySAC",
     "SafetyDQN",
@@ -62,4 +66,8 @@ __all__ = [
     "ReachAvoidReplayBuffer",
     "ReachAvoidReplayBufferSamples",
     "IsaacsPolicy",
+    # --- gamma annealing (on by default in every Safety* algo) ---
+    "GammaAnnealMixin",
+    "GeometricGammaAnneal",
+    "make_default_gamma_schedule",
 ]

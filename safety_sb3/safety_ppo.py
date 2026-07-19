@@ -39,6 +39,7 @@ from stable_baselines3.common.utils import obs_as_tensor, update_learning_rate
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.ppo.ppo import PPO
 
+from .gamma_anneal import GammaAnnealMixin
 from .safety_buffers import SafetyRolloutBuffer
 from .tensor_buffers import TensorSafetyRolloutBuffer
 from .tensor_env import TensorVecEnv, TensorVecNormalize
@@ -75,7 +76,7 @@ def _guard_and_normalize_env(env, normalize_obs: bool):
     return env
 
 
-class SafetyPPO(PPO):
+class SafetyPPO(GammaAnnealMixin, PPO):
     """PPO with the Safety Bellman backup, the rsl_rl-parity training recipe.
 
     :param bootstrap_on_timeout: if False (default) skip PPO's timeout value
@@ -87,6 +88,11 @@ class SafetyPPO(PPO):
     :param desired_kl: target KL for the adaptive LR controller.
     :param lr_bounds: (min, max) bounds for the adaptive LR.
     :param adaptive_lr_factor: multiplicative step for the adaptive LR.
+    :param gamma_anneal: discount-factor annealing (ON by default). ``True``
+        anneals gamma 0.99 -> 0.9999 over the first 50% of training then holds
+        (the reach-avoid boundary only sharpens as gamma -> 1; see
+        ``gamma_anneal.py``). ``False`` keeps gamma constant; a callable
+        ``frac -> gamma`` supplies a custom schedule.
 
     GPU-resident path: pass a :class:`~safety_sb3.tensor_env.TensorVecEnv`
     and everything (rollout, buffer, backup, minibatching) stays on device —
@@ -109,6 +115,7 @@ class SafetyPPO(PPO):
         desired_kl: float | None = 0.01,
         lr_bounds: tuple[float, float] = (1e-5, 1e-2),
         adaptive_lr_factor: float = 1.5,
+        gamma_anneal=True,
         **kwargs,
     ):
         # Guard the reward-normalization footgun + optionally add obs norm.
@@ -158,6 +165,8 @@ class SafetyPPO(PPO):
             rollout_buffer_kwargs=rollout_buffer_kwargs,
             **kwargs,
         )
+        # Resolve the gamma-anneal schedule now that super() has set self.gamma.
+        self._setup_gamma_anneal(gamma_anneal)
 
     def _setup_model(self) -> None:
         # Builds policy, optimizer, and rollout buffer.
@@ -299,6 +308,10 @@ class SafetyPPO(PPO):
         (off by default — the reward is the physical margin g(s)), and a
         ``_record_step_extras`` hook runs before each ``add()``.  On the
         GPU-resident path this dispatches to ``_collect_rollouts_tensor``."""
+        # Anneal gamma (buffer.gamma) for THIS rollout's GAE, then collect. The
+        # tensor path bypasses SB3's _update_current_progress_remaining, so apply
+        # it here explicitly (idempotent on the numpy path).
+        self._apply_gamma_anneal()
         if self._tensor_path:
             return self._collect_rollouts_tensor(
                 env, callback, rollout_buffer, n_rollout_steps)

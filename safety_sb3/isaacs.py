@@ -37,7 +37,7 @@ import copy
 import numpy as np
 import torch as th
 import torch.nn.functional as F
-from stable_baselines3.common.utils import polyak_update
+from stable_baselines3.common.utils import polyak_update, update_learning_rate
 
 from safety_sb3 import backups
 from safety_sb3.isaacs_policy import IsaacsPolicy
@@ -63,6 +63,23 @@ class GameplaySAC(ReachAvoidSAC):
     ctrl_action_dim: int | None = None,  # None only on load (restored from policy_kwargs)
     ctrl_update_period: int = 1,
     dstb_update_period: int = 1,
+    # --- per-network / per-actor learning rates (audit issue 1) ---
+    # Each is None -> falls back to the shared ``learning_rate`` (so existing
+    # callers are unchanged). ``dstb_learning_rate`` is the dstb ACTOR lr;
+    # ``ent_coef_lr`` / ``dstb_ent_coef_lr`` are the ctrl / dstb ENTROPY (alpha)
+    # optimizer lrs. The ctrl actor always uses the shared ``learning_rate``.
+    critic_learning_rate: float | None = None,
+    dstb_learning_rate: float | None = None,
+    ent_coef_lr: float | None = None,
+    dstb_ent_coef_lr: float | None = None,
+    # --- optional StepLR decay for the ctrl/dstb/critic optimizers (issue 2) ---
+    # OFF by default (constant lr). When on, each lr decays by ``lr_decay`` every
+    # ``lr_period`` env-steps toward ``lr_end`` (reference StepLR). The entropy
+    # (alpha) lrs stay constant -- an alpha-lr schedule is a follow-up.
+    lr_schedule: bool = False,
+    lr_period: int = 1_000_000,
+    lr_decay: float = 0.1,
+    lr_end: float = 0.0,
     # --- leaderboard (increment 3) ---
     use_leaderboard: bool = False,
     leaderboard_eval_env=None,
@@ -77,6 +94,17 @@ class GameplaySAC(ReachAvoidSAC):
     self.ctrl_action_dim = None if ctrl_action_dim is None else int(ctrl_action_dim)
     self.ctrl_update_period = int(ctrl_update_period)
     self.dstb_update_period = int(dstb_update_period)
+    # Raw per-network lr args (None = fall back to shared learning_rate); the
+    # numeric lrs are resolved in _setup_model once self.lr_schedule exists.
+    self._critic_lr_arg = critic_learning_rate
+    self._dstb_lr_arg = dstb_learning_rate
+    self._ent_coef_lr_arg = ent_coef_lr
+    self._dstb_ent_coef_lr_arg = dstb_ent_coef_lr
+    # StepLR decay config for the ctrl/dstb/critic optimizers.
+    self._lr_schedule_on = bool(lr_schedule)
+    self._lr_period = max(1, int(lr_period))
+    self._lr_decay = float(lr_decay)
+    self._lr_end = float(lr_end)
     self.use_leaderboard = bool(use_leaderboard)
     self._lb_eval_env = leaderboard_eval_env
     self._lb_cfg = dict(
@@ -102,6 +130,16 @@ class GameplaySAC(ReachAvoidSAC):
       "ctrl_action_dim is required (the number of leading control action dims)."
     )
     super()._setup_model()  # sets ctrl entropy (target = -full_dim) and aliases
+    # Resolve the per-network / per-actor lrs now that self.lr_schedule exists.
+    # None -> shared learning_rate. ``_ctrl_lr`` is the shared value; the ctrl
+    # entropy lr (``_ent_coef_lr``) is read by SafetySAC._reset_entropy_temp.
+    shared_lr = float(self.lr_schedule(1))
+    self._ctrl_lr = shared_lr
+    self._critic_lr = shared_lr if self._critic_lr_arg is None else float(self._critic_lr_arg)
+    self._dstb_lr = shared_lr if self._dstb_lr_arg is None else float(self._dstb_lr_arg)
+    self._ent_coef_lr = shared_lr if self._ent_coef_lr_arg is None else float(self._ent_coef_lr_arg)
+    self._dstb_ent_coef_lr = (
+      shared_lr if self._dstb_ent_coef_lr_arg is None else float(self._dstb_ent_coef_lr_arg))
     # SB3 only defines ent_coef_tensor for FIXED ent_coef; default it for "auto".
     if not hasattr(self, "ent_coef_tensor"):
       self.ent_coef_tensor = None
@@ -124,10 +162,26 @@ class GameplaySAC(ReachAvoidSAC):
         th.ones(1, device=self.device) * init_value
       ).requires_grad_(True)
       self.dstb_ent_coef_optimizer = th.optim.Adam(
-        [self.dstb_log_ent_coef], lr=self.lr_schedule(1)
+        [self.dstb_log_ent_coef], lr=self._dstb_ent_coef_lr
       )
     else:
       self.dstb_ent_coef_tensor = th.tensor(float(self.ent_coef), device=self.device)
+
+    # Snapshot the dstb init entropy temperature so a gamma jump can reset it
+    # too (the ctrl init is snapshotted in SafetySAC._setup_entropy_bounds).
+    self._init_dstb_log_ent_coef = (
+      None if self.dstb_log_ent_coef is None
+      else self.dstb_log_ent_coef.detach().clone())
+
+    # IsaacsPolicy._build built actor/dstb_actor/critic at the shared lr, and
+    # SB3 built the ctrl ent_coef optimizer at the shared lr; stamp the dedicated
+    # lrs so they hold even before the first train() step (the dstb ent optimizer
+    # was already built at its dedicated lr above). The ctrl actor keeps the
+    # shared lr.
+    update_learning_rate(self.critic.optimizer, self._critic_lr)
+    update_learning_rate(self.dstb_actor.optimizer, self._dstb_lr)
+    if self.ent_coef_optimizer is not None:
+      update_learning_rate(self.ent_coef_optimizer, self._ent_coef_lr)
 
     if self.use_leaderboard:
       self._leaderboard = Leaderboard(seed=self.seed or 0, **self._lb_cfg)
@@ -162,9 +216,17 @@ class GameplaySAC(ReachAvoidSAC):
 
   _LB_MAX_STEPS = 400
 
+  @property
+  def _is_reach_avoid(self) -> bool:
+    """True for the reach-avoid game (needs a target l), False for avoid-only.
+    Avoid-only success == safe (never entered the failure set); reach-avoid
+    success == reached the target AND stayed safe."""
+    return self._MODE == backups.REACH_AVOID
+
   @th.no_grad()
   def _eval_pair(self, ctrl_actor, dstb_actor) -> float:
-    """Reach-avoid success rate of ``ctrl`` vs ``dstb`` (None = dummy/no-dstb).
+    """Success rate of ``ctrl`` vs ``dstb`` (None = dummy/no-dstb). Reach-avoid:
+    reached target AND safe; avoid-only: safe (the reach term does not apply).
 
     Uses a parallel ``VecEnv`` eval env when available (one batch = ``num_envs``
     first-episodes, much cheaper for large leaderboards); otherwise falls back to
@@ -196,7 +258,7 @@ class GameplaySAC(ReachAvoidSAC):
           safe = False
         if float(info.get("l_x", -1.0)) >= 0:
           reached = True
-      succ += int(safe and reached)
+      succ += int(safe and (reached or not self._is_reach_avoid))
     return succ / max(self.n_eval_episodes, 1)
 
   def _eval_pair_vec(self, env, ctrl_actor, dstb_actor, dn) -> float:
@@ -225,7 +287,8 @@ class GameplaySAC(ReachAvoidSAC):
         done_once |= active & np.asarray(dones, dtype=bool)
         if done_once.all():
           break
-      total_succ += int((ep_safe & ep_reached).sum())
+      hits = ep_safe if not self._is_reach_avoid else (ep_safe & ep_reached)
+      total_succ += int(hits.sum())
       total += n_env
     return total_succ / max(total, 1)
 
@@ -298,9 +361,74 @@ class GameplaySAC(ReachAvoidSAC):
       optimizer.zero_grad()
       loss.backward()
       optimizer.step()
+      # min_alpha/max_alpha floor/ceiling (issue 7) -- both actors share bounds.
+      if self._log_min_alpha is not None or self._log_max_alpha is not None:
+        with th.no_grad():
+          log_coef.clamp_(min=self._log_min_alpha, max=self._log_max_alpha)
     else:
       coef = coef_tensor
     return coef
+
+  def _reset_entropy_temp(self) -> None:
+    """A gamma jump resets BOTH actors' entropy temperature (reference resets
+    ctrl AND dstb alpha on every jump)."""
+    super()._reset_entropy_temp()  # ctrl
+    dlec = getattr(self, "dstb_log_ent_coef", None)
+    if dlec is None or getattr(self, "_init_dstb_log_ent_coef", None) is None:
+      return
+    with th.no_grad():
+      dlec.data.copy_(self._init_dstb_log_ent_coef)
+    if getattr(self, "dstb_ent_coef_optimizer", None) is not None:
+      dstb_lr = getattr(self, "_dstb_ent_coef_lr", None)
+      if dstb_lr is None:
+        dstb_lr = float(self.lr_schedule(1))
+      self.dstb_ent_coef_optimizer = th.optim.Adam([dlec], lr=dstb_lr)
+
+  # --- per-network learning-rate control (audit issues 1 & 2) --------------
+  def _steplr_value(self, base_lr: float) -> float:
+    """Reference StepLR: ``base * lr_decay ** (env_steps // lr_period)``,
+    floored at ``lr_end``."""
+    num_decay = int(self.num_timesteps) // self._lr_period
+    return max(base_lr * (self._lr_decay ** num_decay), self._lr_end)
+
+  def _dedicated_lr_specs(self):
+    """Optimizers with their own lr, as ``{id(opt): (base_lr, steplr_on)}``.
+
+    The critic and dstb actor always carry a dedicated (possibly StepLR-decayed)
+    lr. The ctrl actor is only intercepted when StepLR is on -- otherwise it
+    falls through to SB3's shared-schedule ``_update_learning_rate`` (unchanged
+    behaviour). The entropy (alpha) optimizers hold a constant dedicated lr; an
+    alpha-lr StepLR is a follow-up."""
+    specs = {
+      id(self.critic.optimizer): (self._critic_lr, self._lr_schedule_on),
+      id(self.dstb_actor.optimizer): (self._dstb_lr, self._lr_schedule_on),
+    }
+    if self._lr_schedule_on:
+      specs[id(self.actor.optimizer)] = (self._ctrl_lr, True)
+    if self.ent_coef_optimizer is not None:
+      specs[id(self.ent_coef_optimizer)] = (self._ent_coef_lr, False)
+    if self.dstb_ent_coef_optimizer is not None:
+      specs[id(self.dstb_ent_coef_optimizer)] = (self._dstb_ent_coef_lr, False)
+    return specs
+
+  def _update_learning_rate(self, optimizers) -> None:
+    """Stop the blanket SB3 overwrite from collapsing every optimizer onto the
+    single shared ``lr_schedule``. Optimizers with a dedicated lr keep it (or its
+    StepLR-decayed value); anything else routes through SB3's default update so
+    the shared ctrl-actor schedule is preserved."""
+    if not isinstance(optimizers, list):
+      optimizers = [optimizers]
+    specs = self._dedicated_lr_specs()
+    shared = []
+    for opt in optimizers:
+      spec = specs.get(id(opt))
+      if spec is None:
+        shared.append(opt)
+        continue
+      base_lr, steplr_on = spec
+      update_learning_rate(opt, self._steplr_value(base_lr) if steplr_on else base_lr)
+    if shared:
+      super()._update_learning_rate(shared)
 
   def train(self, gradient_steps: int, batch_size: int) -> None:
     self.policy.set_training_mode(True)
@@ -399,6 +527,12 @@ class GameplaySAC(ReachAvoidSAC):
       self.logger.record("train/ctrl_actor_loss", np.mean(ctrl_losses))
     if dstb_losses:
       self.logger.record("train/dstb_actor_loss", np.mean(dstb_losses))
+    # Per-actor entropy temperature (alpha) + gamma (issue 3: reference logs
+    # hyper_parameters/alpha_ctrl|alpha_dstb|gamma). ctrl_ent/dstb_ent hold the
+    # last step's values.
+    self.logger.record("train/ent_coef_ctrl", float(ctrl_ent.mean()))
+    self.logger.record("train/ent_coef_dstb", float(dstb_ent.mean()))
+    self.logger.record("train/gamma", float(self.gamma))
 
   def _excluded_save_params(self):
     # Leaderboard runtime objects are rebuilt by _setup_model on load; the eval
