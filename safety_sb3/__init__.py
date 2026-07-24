@@ -10,6 +10,13 @@ The two problems take DIFFERENT value operators — see :mod:`safety_sb3.backups
 which defines both in one place. Avoid is not expressible as a reach-avoid
 instance with a degenerate ``l``; pick the row that matches your task.
 
+Each learner is written against ``backups.target(mode, ...)`` rather than a
+fixed operator, so a class in this table is (mostly) a ``_MODE`` specialization
+of an abstract algorithm — :class:`AbstractSAC` for the single-player SAC pair —
+and the mode is also selectable per instance (``mode=``). Ordinary
+reward-maximizing RL is the third mode, ``backups.CUMULATIVE``: use it for a
+nominal baseline that shares every line of code with the safety learners.
+
 .. warning::
    **v0.2.0 renamed the two-player reach-avoid classes.** ``IsaacsPPO`` /
    ``IsaacsSAC`` were reach-avoid and are now :class:`GameplayPPO` /
@@ -19,6 +26,7 @@ instance with a degenerate ``l``; pick the row that matches your task.
    algorithm. See RELEASE_NOTES.md.
 """
 from . import backups
+from .sac_base import AbstractSAC
 from .safety_sac import SafetySAC
 from .safety_dqn import SafetyDQN
 from .safety_buffers import SafetyRolloutBuffer
@@ -40,6 +48,9 @@ from .eval_callbacks import SafeSuccessRateEvalCallback
 
 __all__ = [
     "backups",
+    # --- the mode-parameterized single-player SAC every Safety*/ReachAvoid*
+    #     SAC specializes (also usable directly, e.g. mode="cumulative") ---
+    "AbstractSAC",
     "StdCapCallback",
     "SafeSuccessRateEvalCallback",
     # --- single-player, avoid ---
