@@ -45,7 +45,10 @@ extends ISAACS to reach-avoid. **These names changed meaning in v0.2.0** — see
 
 Every backup is defined once in [`safety_sb3/backups.py`](safety_sb3/backups.py)
 and shared by all learners; read that module for the operators and their
-derivations.
+derivations. Learners call `backups.target(mode, …)` rather than owning a
+backup, so a class above is essentially a mode choice (`mode=` also works
+per instance) — and ordinary reward-maximizing RL is the third mode,
+`backups.CUMULATIVE`, for a nominal baseline on the same code.
 
 All backups use the time-discounted convention
 
@@ -208,6 +211,9 @@ python -m pytest tests/ -q
   integrator (seconds, CPU).
 - `tests/test_tensor_sac.py` — tensor-path buffer semantics + `SafetySAC`/
   `ReachAvoidSAC` learning on the same task (~2 min, CPU).
+- `tests/test_abstract_dp.py` — the backup is a *parameter*: mode dispatch on the
+  SAC/DQN/buffer paths, the cumulative (standard-RL) operator, and the regression
+  guard for the entropy-temperature clamp the old copied `train()` had dropped.
 
 ## References
 

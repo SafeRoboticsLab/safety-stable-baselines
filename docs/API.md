@@ -66,9 +66,11 @@ Pick the **row** by your problem (does the task have a target to reach?) and the
 
 ## 3. The backups (`safety_sb3.backups`)
 
-Both operators are defined **once** in `safety_sb3/backups.py` and every learner
-routes through it. Convention: `g ≥ 0` safe, `l ≥ 0` in-target, `V` maximized,
-`V ≥ 0` ⟺ in the solution set.
+Every operator is defined **once** in `safety_sb3/backups.py` and every learner
+routes through it — learners are written against `backups.target(mode, …)` and
+specialize by setting a mode, not by owning a backup. Convention for the two
+**safety** operators: `g ≥ 0` safe, `l ≥ 0` in-target, `V` maximized, `V ≥ 0` ⟺
+in the solution set.
 
 ```
 target = nt · ( (1 − γ)·anchor + γ·backup ) + (1 − nt)·terminal
@@ -92,14 +94,27 @@ a fixed point at `V = g > 0` — a win — when its true value is `maxₜ lₜ <
 result is neither problem's value, RSS'21's under-approximation theorem stops
 applying, and the critic is unsound to shield with. This was the v0.1.0 bug.
 
+### The third mode: `cumulative` (ordinary RL)
+
+`V(s) = r + γ·V'` — the standard discounted-return backup, **not** a safety
+operator: its first argument is a *reward*, not a margin, and `V ≥ 0` means
+nothing. It is a mode because the learners take the operator as a parameter, so
+plain reward-maximizing RL costs one branch: `AbstractSAC(…, mode="cumulative")`
+is SAC, `SafetyDQN(…, mode="cumulative")` is DQN, and
+`SafetyRolloutBuffer(…, mode="cumulative")` reduces exactly to SB3's GAE
+(asserted in `tests/test_abstract_dp.py`). Use it for a nominal baseline that
+shares every line of the safety learners' code.
+
 Public functions:
 
 ```python
 backups.avoid_target(g, v_next, not_done, gamma)
 backups.reach_avoid_target(g, l, v_next, not_done, gamma, terminal_type="all")
+backups.cumulative_target(reward, v_next, not_done, gamma)
 backups.target(mode, g, v_next, not_done, gamma, l=None, terminal_type="all")
-backups.AVOID, backups.REACH_AVOID          # the two mode strings
-backups.check_terminal_type(s)              # validates "all" | "g"
+backups.AVOID, backups.REACH_AVOID, backups.CUMULATIVE   # the mode strings
+backups.MODES, backups.SAFETY_MODES         # all three / the two safety ones
+backups.check_mode(s), backups.check_terminal_type(s)
 ```
 
 All are elementwise and accept numpy arrays or torch tensors interchangeably.

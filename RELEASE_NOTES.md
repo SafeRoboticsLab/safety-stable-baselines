@@ -1,5 +1,40 @@
 # Release notes
 
+## Unreleased — abstract-DP refactor (behavior-preserving)
+
+No public class was renamed or removed and no default changed. The learners
+reproduce v0.3.0 bit-for-bit, except `SafetyDQN` (~1e-6 relative, pure float
+reassociation) and `ReachAvoidSAC` when `min_alpha`/`max_alpha` are set away
+from their defaults (bug fix) — both below.
+
+- **Every learner now takes its backup as a parameter.** `AbstractSAC` holds the
+  single-player SAC update loop and calls `backups.target(self._MODE, …)`;
+  `SafetySAC` and `ReachAvoidSAC` are one-line `_MODE` specializations of it
+  (previously `ReachAvoidSAC.train()` was a hand-copy of `SafetySAC.train()`).
+  The mode is also selectable per instance: `Cls(…, mode="reach-avoid")`. The
+  two-player classes keep their own `train()` (twin actors, per-actor entropy)
+  and share only the backup, as before.
+- **Bug fix — `min_alpha`/`max_alpha` now apply to `ReachAvoidSAC`.** The copied
+  `train()` had dropped the `_clamp_entropy_temps()` call, so the entropy-
+  temperature floor/ceiling silently did nothing on the single-player
+  reach-avoid path (measured: α = 0.763 after 1500 steps with `min_alpha=0.9`).
+  Two-player SAC was never affected (it clamps inline). If you trained RA-1P
+  with a non-default `min_alpha`, α was unclamped; retrain for the intended
+  behavior.
+- **New mode `backups.CUMULATIVE`** — the standard discounted-return backup
+  `r + γ·V'`. Plain reward-maximizing RL is now a mode of this library, so a
+  nominal baseline runs through the same actor/critic/entropy code as the safety
+  learners: `AbstractSAC(…, mode="cumulative")`, `SafetyDQN(…,
+  mode="cumulative")`, and `SafetyRolloutBuffer(…, mode="cumulative")` ≡ SB3's
+  GAE. It is **not** a safety operator: its first argument is a reward and
+  `V ≥ 0` carries no certificate meaning.
+- **`SafetyDQN` no longer inlines its own backup.** It computed
+  `(1 − γ·nt)·g + γ·nt·min(g, V')` by hand; that is the same expression as
+  `backups.avoid_target`, which it now calls. Reassociating the terms changes
+  float rounding, so long DQN runs drift ~1e-6 relative from v0.3.0.
+- The on-policy buffers (`SafetyRolloutBuffer` / `ReachAvoidRolloutBuffer` and
+  their tensor twins) likewise share one `_target` that dispatches on `_MODE`.
+
 ## v0.3.0 — two-player SAC + reference-faithful discount annealing
 
 Additive release (no anchor/API breakage vs v0.2.x), with **one behavioral default

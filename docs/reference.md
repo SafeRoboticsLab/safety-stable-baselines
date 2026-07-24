@@ -3,7 +3,7 @@
 Auto-generated from source docstrings. See the [API guide](API.md) for the
 conceptual contract.
 
-## Backups — the two value operators
+## Backups — the value operators
 
 ::: safety_sb3.backups
 
@@ -14,6 +14,10 @@ conceptual contract.
       members: [ReachAvoidPPO]
 
 ## Off-policy learners (SAC family)
+
+::: safety_sb3.sac_base
+    options:
+      members: [AbstractSAC]
 
 ::: safety_sb3.reach_avoid_sac
     options:
