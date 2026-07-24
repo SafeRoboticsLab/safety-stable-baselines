@@ -29,7 +29,8 @@ class TensorSafetyRolloutBuffer:
   def __init__(self, buffer_size: int, observation_space: spaces.Space,
                action_space: spaces.Space, device: str = "cuda:0",
                gae_lambda: float = 0.95, gamma: float = 0.99,
-               n_envs: int = 1, **_ignored):
+               n_envs: int = 1, mode: str | None = None, **_ignored):
+    self._MODE = backups.check_mode(self._MODE if mode is None else mode)
     self.buffer_size = int(buffer_size)
     self.n_envs = int(n_envs)
     self.device = device
@@ -76,10 +77,17 @@ class TensorSafetyRolloutBuffer:
       self.full = True
 
   # --- backup ---------------------------------------------------------------
+  #: backup this buffer computes; the ``mode=`` ctor kwarg overrides it
+  _MODE = backups.AVOID
+
   def _target(self, step: int, v_next: th.Tensor,
               not_done: th.Tensor) -> th.Tensor:
-    return backups.avoid_target(self.rewards[step], v_next, not_done,
-                                self.gamma)
+    """Dispatch on ``self._MODE`` — twin of the numpy buffer's ``_target``."""
+    l_x = getattr(self, "l_x", None)
+    return backups.target(
+      self._MODE, self.rewards[step], v_next, not_done, self.gamma,
+      l=None if l_x is None else l_x[step],
+      terminal_type=getattr(self, "terminal_type", "all"))
 
   @th.no_grad()
   def compute_returns_and_advantage(self, last_values: th.Tensor,
@@ -128,6 +136,8 @@ class TensorReachAvoidRolloutBuffer(TensorSafetyRolloutBuffer):
   see it for the operator, the anchor rationale, and ``terminal_type``.
   """
 
+  _MODE = backups.REACH_AVOID
+
   def __init__(self, *args, terminal_type: str = "all", **kwargs):
     self.terminal_type = backups.check_terminal_type(terminal_type)
     super().__init__(*args, **kwargs)
@@ -135,9 +145,3 @@ class TensorReachAvoidRolloutBuffer(TensorSafetyRolloutBuffer):
   def reset(self) -> None:
     super().reset()
     self.l_x = th.zeros(self.buffer_size, self.n_envs, device=self.device)
-
-  def _target(self, step: int, v_next: th.Tensor,
-              not_done: th.Tensor) -> th.Tensor:
-    return backups.reach_avoid_target(self.rewards[step], self.l_x[step],
-                                      v_next, not_done, self.gamma,
-                                      self.terminal_type)

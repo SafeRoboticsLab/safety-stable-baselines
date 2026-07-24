@@ -11,12 +11,28 @@ class SafetyRolloutBuffer(RolloutBuffer):
     ``g(s)`` rides on the reward channel. The operator is
     ``V(s) = (1-gamma)*g + gamma*min(g, V(s'))`` with terminal target ``g`` —
     see :mod:`safety_sb3.backups`, which defines it.
+
+    As on the SAC side, the operator is a parameter: :meth:`_target` dispatches
+    on ``self._MODE`` through :func:`safety_sb3.backups.target`. The PPO family
+    still picks its problem by *which buffer class* it builds (that is what
+    carries the ``l``-plumbing, see :class:`ReachAvoidRolloutBuffer`); ``mode``
+    is the escape hatch for a mode with no extra plumbing —
+    ``mode="cumulative"`` turns this buffer back into SB3's ordinary GAE.
     """
+
+    _MODE = backups.AVOID
+
+    def __init__(self, *args, mode: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._MODE = backups.check_mode(self._MODE if mode is None else mode)
 
     def _target(self, step: int, v_next: np.ndarray,
                 not_done: np.ndarray) -> np.ndarray:
-        return backups.avoid_target(self.rewards[step], v_next, not_done,
-                                    self.gamma)
+        l_x = getattr(self, "l_x", None)
+        return backups.target(
+            self._MODE, self.rewards[step], v_next, not_done, self.gamma,
+            l=None if l_x is None else l_x[step],
+            terminal_type=getattr(self, "terminal_type", "all"))
 
     def compute_returns_and_advantage(self, last_values: th.Tensor, dones: np.ndarray) -> None:
         """
@@ -62,6 +78,8 @@ class ReachAvoidRolloutBuffer(SafetyRolloutBuffer):
         ``"g"`` -> ``g``. See :func:`safety_sb3.backups.reach_avoid_target`.
     """
 
+    _MODE = backups.REACH_AVOID
+
     def __init__(self, *args, terminal_type: str = "all", **kwargs):
         super().__init__(*args, **kwargs)
         self.terminal_type = backups.check_terminal_type(terminal_type)
@@ -69,9 +87,3 @@ class ReachAvoidRolloutBuffer(SafetyRolloutBuffer):
     def reset(self) -> None:
         super().reset()
         self.l_x = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-
-    def _target(self, step: int, v_next: np.ndarray,
-                not_done: np.ndarray) -> np.ndarray:
-        return backups.reach_avoid_target(self.rewards[step], self.l_x[step],
-                                          v_next, not_done, self.gamma,
-                                          self.terminal_type)
