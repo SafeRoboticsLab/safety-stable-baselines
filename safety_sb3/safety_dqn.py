@@ -4,25 +4,42 @@ import torch.nn.functional as F
 
 from stable_baselines3.dqn.dqn import DQN
 
+from . import backups
 from .gamma_anneal import GammaAnnealMixin
 
 
 class SafetyDQN(GammaAnnealMixin, DQN):
     """Safety DQN.
 
+    The TD target is the backup for ``self._MODE``, dispatched through
+    :mod:`safety_sb3.backups` like every other learner in the library:
+    ``AVOID`` (the default, Fisac et al. 2019) or ``CUMULATIVE`` (vanilla DQN).
+    ``REACH_AVOID`` is not available here -- SB3's discrete-action
+    ``ReplayBuffer`` carries no target margin ``l(s)``.
+
     ``gamma_anneal`` (ON by default) anneals the discount 0.99 -> 0.9999 over the
     first 50% of training (read as ``self.gamma`` in the TD target of
     ``train()``); the numpy off-policy loop applies it via
     ``_update_current_progress_remaining``. See ``gamma_anneal.py``.
+
+    :param mode: backup to converge to; defaults to the class's ``_MODE``.
     """
 
-    def __init__(self, *args, gamma_anneal=True, **kwargs):
+    _MODE = backups.AVOID
+
+    def __init__(self, *args, mode: str | None = None, gamma_anneal=True,
+                 **kwargs):
+        self._MODE = backups.check_mode(self._MODE if mode is None else mode)
+        if self._MODE == backups.REACH_AVOID:
+            raise ValueError(
+                "SafetyDQN cannot run mode='reach-avoid': its replay buffer "
+                "stores no target margin l(s). Use ReachAvoidSAC.")
         super().__init__(*args, **kwargs)
         self._setup_gamma_anneal(gamma_anneal)
 
     def train(self, gradient_steps: int, batch_size: int) -> None:
         """Largely follows the original DQN train method from stable_baselines3.
-        We use the safety Bellman backup.
+        The TD target is the backup for ``self._MODE`` (safety_sb3.backups).
         """
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
@@ -44,13 +61,16 @@ class SafetyDQN(GammaAnnealMixin, DQN):
                 # Avoid potential broadcast issue
                 next_q_values = next_q_values.reshape(-1, 1)
 
-                # Safety Bellman: 1-step TD target
-                gs = replay_data.rewards  # immediate safety margin values g(s) from env rewards
+                # 1-step TD target for this learner's mode -- defined in
+                # safety_sb3.backups. For AVOID this is the algebraically
+                # identical rearrangement of the form this file used to inline:
+                #   (1 - g*nt)*gs + g*nt*min(gs, V')
+                #   == nt*((1-g)*gs + g*min(gs, V')) + (1-nt)*gs
+                # i.e. the full gs is still returned at terminal states.
+                gs = replay_data.rewards  # g(s) (a reward, in CUMULATIVE mode)
                 not_done = 1.0 - replay_data.dones
-                v_to_go = th.minimum(gs, next_q_values)
-                target_q_values = (
-                    1.0 - self.gamma * not_done
-                ) * gs + self.gamma * not_done * v_to_go  # ensures that the full gs is returned at terminal states
+                target_q_values = backups.target(
+                    self._MODE, gs, next_q_values, not_done, self.gamma)
 
             # Get current Q-values estimates
             current_q_values = self.q_net(replay_data.observations)
