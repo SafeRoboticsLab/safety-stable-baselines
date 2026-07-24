@@ -1,11 +1,16 @@
 """The Bellman backups — defined ONCE, used by every learner.
 
-This library solves two different problems, and they take different value
+This library solves two different safety problems, and they take different value
 operators. Before this module existed the operators were re-implemented at four
 call sites (the numpy rollout buffer, the torch rollout buffer, and two SAC
 ``train()`` bodies); they silently diverged, and the PPO family spent the whole
 2026 campaign optimizing a fixed point that was neither problem's value. Every
 backup now routes through here so that cannot recur.
+
+A learner is then written *without reference to a particular operator* — it
+takes a ``mode`` and calls :func:`target`. Ordinary sum-of-rewards RL is one of
+the modes (:data:`CUMULATIVE`), so it is a special case of the same code, not a
+separate library.
 
 Convention (throughout the library)::
 
@@ -13,8 +18,8 @@ Convention (throughout the library)::
     l(s) >= 0   <=>  s is INSIDE the target set     ("reached")
     V is MAXIMIZED;  V(s) >= 0  <=>  s is in the solution set
 
-The two operators
------------------
+The operators
+-------------
 
 **Avoid** (stay safe forever) — Fisac et al. 2019; ISAACS eq. 6/7::
 
@@ -26,7 +31,23 @@ RSS'21 eq. 15; Gameplay Filters eq. 6a::
     V(s) = (1 - gamma) * min(l(s), g(s))
          + gamma * min( g(s), max( l(s), V(s') ) )
 
-Both share the shape ``(1 - gamma) * anchor + gamma * backup``. **The anchor is
+**Cumulative** (the STANDARD RL operator — maximize the discounted sum of
+rewards; Bellman 1957, and every textbook since)::
+
+    V(s) = r(s)  +  gamma * V(s')
+
+This one is *not* a safety operator and does not follow the sign convention
+above: its first argument is a **reward**, not a margin, ``V`` is an expected
+discounted return with no zero-level-set meaning, and there is no ``g``, no
+``l`` and no failure set. It is here because the learners in this library are
+written against :func:`target` rather than against a fixed backup, so plain
+sum-of-rewards RL costs one branch and comes out as the degenerate member of the
+family. Use it to run a *nominal* (reward-maximizing) baseline through exactly
+the same actor/critic/entropy code as the safety learners — the standard control
+for "is the safety operator doing the work, or is it just SAC?". Do not read a
+cumulative ``V`` as a safety certificate; ``V >= 0`` means nothing here.
+
+The two safety operators share the shape ``(1 - gamma) * anchor + gamma * backup``. **The anchor is
 the "episode terminates now" payoff** — ``1 - gamma`` is the per-step
 termination probability of the discounted formulation, so the anchor is what the
 trajectory scores if it stops here:
@@ -83,7 +104,11 @@ Array = Union[np.ndarray, th.Tensor]
 AVOID = "safety"
 #: the two-player and single-player *reach-avoid* problem
 REACH_AVOID = "reach-avoid"
-MODES = (AVOID, REACH_AVOID)
+#: ordinary discounted-return RL (NOT a safety problem -- see the docstring)
+CUMULATIVE = "cumulative"
+MODES = (AVOID, REACH_AVOID, CUMULATIVE)
+#: the modes whose value is a safety certificate (``V >= 0`` <=> in the solution set)
+SAFETY_MODES = (AVOID, REACH_AVOID)
 
 #: terminal-target options for the reach-avoid operator (see ``reach_avoid_target``)
 TERMINAL_TYPES = ("all", "g")
@@ -146,16 +171,39 @@ def reach_avoid_target(g: Array, l: Array, v_next: Array, not_done: Array,
           + (1.0 - not_done) * terminal)
 
 
+def cumulative_target(reward: Array, v_next: Array, not_done: Array,
+                      gamma: float) -> Array:
+  """Standard RL target: ``r + gamma * V'``; terminal -> ``r``.
+
+  The ordinary discounted-cumulative-reward backup, so that reward-maximizing
+  RL is a mode of this library rather than a separate implementation. Unlike
+  the two safety operators this one carries no margin semantics: the first
+  argument is a **reward**, and the resulting ``V`` is an expected return whose
+  sign means nothing.
+
+  :param reward: immediate reward ``r(s, a)`` (NOT a margin).
+  :param v_next: bootstrap value ``V(s')``.
+  :param not_done: 1.0 on non-terminal steps, 0.0 on terminal steps.
+  :param gamma: discount.
+  """
+  return reward + gamma * not_done * v_next
+
+
 def target(mode: str, g: Array, v_next: Array, not_done: Array, gamma: float,
            l: Optional[Array] = None, terminal_type: str = "all") -> Array:
   """Dispatch to the operator for ``mode``. See the module docstring.
 
-  :param mode: ``backups.AVOID`` or ``backups.REACH_AVOID``.
-  :param l: required for ``REACH_AVOID``; ignored for ``AVOID``.
+  :param mode: ``backups.AVOID``, ``backups.REACH_AVOID`` or
+      ``backups.CUMULATIVE``.
+  :param g: the safety margin ``g(s)`` for the safety modes; for
+      ``CUMULATIVE`` this slot carries the **reward** instead.
+  :param l: required for ``REACH_AVOID``; ignored for the other modes.
   """
   check_mode(mode)
   if mode == AVOID:
     return avoid_target(g, v_next, not_done, gamma)
+  if mode == CUMULATIVE:
+    return cumulative_target(g, v_next, not_done, gamma)
   if l is None:
     raise ValueError("mode='reach-avoid' requires the target margin l")
   return reach_avoid_target(g, l, v_next, not_done, gamma, terminal_type)
