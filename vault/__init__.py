@@ -16,6 +16,23 @@ train         SafetySAC training (reach-avoid V + pi_safe)
 filter        CBF-QP least-restrictive value filter
 evaluate      in-the-loop filter evaluation (requires the vault-controller repo)
 
+Contact/slam extension (not part of f_cert; needs mujoco_plant(contact_geometry=True))
+---------------------------------------------------------------------------------------
+contact_margin    SDF-to-terrain (non-wheel/foot) + slam (impact normal velocity) margins
+target_margin     the target/"reach" margin (at-a-stop neighborhood) for reach-avoid training
+mujoco_env        ContactSafetyEnv: SafetySAC reach-avoid RL env on the real MuJoCo plant;
+                  reach_avoid=True also terminates on reaching the target set
+train_contact     SafetySAC training for ContactSafetyEnv (avoid-only fallback)
+reach_avoid_sac   ReachAvoidSafetySAC: SafetySAC + the target-set Bellman extension
+train_reach_avoid ReachAvoidSafetySAC training for ContactSafetyEnv(reach_avoid=True)
+reach_avoid_eval  comparative rollout eval: avoid-only vs reach-avoid fallback
+calibration_check does the critic's Q(x,pi_safe(x)) actually predict realized rollout safety?
+safety_filter     modular fallback / monitor / intervention safety-filter architecture --
+                  see its docstring for the constraint-set/safe-set/target-set vocabulary
+                  (Hsu, Hu, Fisac 2024, "The Safety Filter", arXiv:2309.05837)
+teleop            keyboard/gamepad test rig: deployed controller -> safety_filter -> plant
+                  (requires the vault-controller repo)
+
 Submodules are imported lazily (no torch/mujoco import cost unless used).
 """
 __all__ = ["config", "dynamics", "f_cert"]

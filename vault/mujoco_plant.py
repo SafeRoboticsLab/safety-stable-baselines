@@ -38,13 +38,21 @@ class MujocoPlant:
     def __init__(self, wheel: str = "torus", mu: float = 1.0, dt: float = 0.001,
                  substeps: int | None = None, tube_radius: float = 0.02,
                  solref: tuple = (0.02, 1.0), margin: float = 0.0,
-                 imu_pos=None, imu_quat=None):
+                 imu_pos=None, imu_quat=None, contact_geometry: bool = False,
+                 xml_override: str | None = None):
         self._p = load_params()
         self._R = self._p["wheel_radius"]
         self._has_imu = imu_pos is not None
-        xml = build_mjcf(wheel=wheel, mu=mu, tube_radius=tube_radius, params=self._p,
-                         solref=solref, margin=margin,
-                         imu_pos=imu_pos, imu_quat=imu_quat)
+        self.contact_geometry = contact_geometry
+        self.mu = mu
+        # xml_override: use a caller-supplied MJCF verbatim (e.g. build_mjcf's output with extra
+        # static geoms spliced in for visualization) instead of building one from scratch here.
+        # Must still define the chassis body + lwheel/rwheel joints + m_left/m_right actuators
+        # that the rest of this class assumes.
+        xml = xml_override if xml_override is not None else build_mjcf(
+            wheel=wheel, mu=mu, tube_radius=tube_radius, params=self._p,
+            solref=solref, margin=margin, imu_pos=imu_pos, imu_quat=imu_quat,
+            contact_geometry=contact_geometry)
         self._m = mujoco.MjModel.from_xml_string(xml)
         self._m.opt.timestep = dt
         self._d = mujoco.MjData(self._m)
@@ -58,6 +66,17 @@ class MujocoPlant:
     @property
     def dt(self) -> float:
         return self._dt_ctrl
+
+    @property
+    def model(self):
+        """Raw MjModel, for callers (e.g. contact_margin.py) that need geom-level access
+        beyond the 4-state abstraction."""
+        return self._m
+
+    @property
+    def data(self):
+        """Raw MjData, see `model`."""
+        return self._d
 
     # --- state mapping helpers ------------------------------------------------
     def _pitch_yaw(self):
@@ -132,6 +151,21 @@ class MujocoPlant:
 
     def get_time(self) -> float:
         return self._t
+
+    # --- full-state clone/restore (for a predictive monitor's shadow rollouts) -----------
+    def get_full_state(self):
+        """(qpos, qvel, t): the exact MuJoCo state (not just the reduced 4-state), so a shadow
+        plant can be seeded to match this one exactly -- including roll/lateral drift the 4-state
+        abstraction can't represent. Cheap (numpy copies, no XML/model rebuild)."""
+        return self._d.qpos.copy(), self._d.qvel.copy(), self._t
+
+    def set_full_state(self, qpos, qvel, t: float = 0.0) -> None:
+        """Inverse of get_full_state. `self` must share the same MjModel structure as the plant
+        the state was taken from (e.g. both built with the same contact_geometry/wheel/mu)."""
+        self._d.qpos[:] = qpos
+        self._d.qvel[:] = qvel
+        mujoco.mj_forward(self._m, self._d)
+        self._t = t
 
     def apply_disturbance(self, force=(0.0, 0.0, 0.0), torque=(0.0, 0.0, 0.0)) -> None:
         """Apply an external wrench on the chassis (world frame, at the body CoM) — the
