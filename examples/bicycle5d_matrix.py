@@ -14,7 +14,7 @@ values loitering at `V = g > 0`, which beats driving) and the two problems
 become indistinguishable -- a regression that value unit tests cannot see. See
 RELEASE_NOTES v0.2.0 and :mod:`safety_sb3.backups`.
 
-Run the whole matrix (CPU, no GPU, no wandb needed)::
+Run the whole matrix (no wandb needed)::
 
     python examples/bicycle5d_matrix.py --out-dir /tmp/bicycle5d_matrix
 
@@ -24,7 +24,25 @@ or one cell while iterating::
 
 Writes per-cell GIFs + a `results.json` / `matrix.md` under `--out-dir`, and
 prints the PASS/FAIL table. Evaluation is `bicycle5d_demo.rollout` -- one source
-of truth for what "reached" means.
+of truth for what "reached" means, and it runs on the numpy `BicycleGoal`
+whatever the training backend is.
+
+**Backends** (`--backend`, default `auto`). `auto` = numpy for PPO, tensor for
+SAC, which is what the defaults below are tuned for:
+
+* `numpy` -- `BicycleGoalVec` on CPU. What the PPO cells were logged with; PPO
+  is on-policy and CPU-bound by its 256-env rollout either way.
+* `tensor` -- `BicycleGoalTensorVec` on GPU. The SAC default, and it fixes TWO
+  independent problems at once. (1) No numpy on the hot path: the learners see
+  `is_tensor_env` and switch to the torch-native collect + `TensorReplayBuffer`.
+  (2) **The update-to-data ratio.** SB3 counts `train_freq` in VECTOR steps, so
+  `train_freq=(16, "step")` with `gradient_steps=16` does 16 gradient steps per
+  `16 * num_envs` env-steps. Over a 2M-step budget that is 125,000 gradient
+  steps at 16 envs but 7,812 at 256 -- a 16x UTD difference at the same env-step
+  budget, and the dominant reason the 16-env CPU SAC cells took ~35 min each.
+  So `--sac-envs` defaults to 256 on the tensor backend and 16 on numpy: those
+  are the settings each backend's numbers were measured at, not interchangeable
+  knobs.
 """
 from __future__ import annotations
 
@@ -35,6 +53,7 @@ import sys
 import time
 
 import numpy as np
+import torch as th
 from stable_baselines3.common.callbacks import BaseCallback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +64,7 @@ from safety_sb3 import (ReachAvoidPPO1P, ReachAvoidPPO2P, ReachAvoidSAC1P,   # n
                         SafetySAC1P, SafetySAC2P)
 from safety_sb3.testing.bicycle5d_render import (EVAL_MAPS, map_gif,   # noqa: E402
                                                  multi_car_rollout)
+from safety_sb3.testing.bicycle5d_tensor import BicycleGoalTensorVec  # noqa: E402
 from safety_sb3.testing.bicycle5d_vec import BicycleGoalVec       # noqa: E402
 
 #: cell -> (reach-avoid class, avoid class, adversary)
@@ -60,17 +80,40 @@ CELLS = {
 CONTRAST_MARGIN = 0.40
 
 
-def build(cls, adversary, seed, family, n_envs, spawn):
+def plan(a, family):
+  """Resolve (backend, n_envs, device) for one family from the CLI defaults.
+
+  Kept in one place because the three are not independent: the tensor backend
+  is only worth having at a large ``num_envs`` (see the module docstring on the
+  update-to-data ratio), and the model's device must be the env's device."""
+  backend = a.backend
+  if backend == "auto":
+    backend = "tensor" if family == "sac" else "numpy"
+  n_envs = a.sac_envs if family == "sac" else a.ppo_envs
+  if n_envs is None:                       # family default, per backend
+    n_envs = 256 if (family == "ppo" or backend == "tensor") else 16
+  device = a.device
+  if device == "auto":
+    device = ("cuda" if backend == "tensor" and th.cuda.is_available()
+              else "cpu")
+  return backend, int(n_envs), device
+
+
+def build(cls, adversary, seed, family, n_envs, spawn, backend, device):
   """Model + env for one arm. Hyperparameters mirror `bicycle5d_demo.py`."""
-  venv = BicycleGoalVec(n_envs, adversary=adversary, seed=seed, spawn=spawn)
+  if backend == "tensor":
+    venv = BicycleGoalTensorVec(n_envs, adversary=adversary, seed=seed,
+                                spawn=spawn, device=device)
+  else:
+    venv = BicycleGoalVec(n_envs, adversary=adversary, seed=seed, spawn=spawn)
   kw = dict(ctrl_action_dim=2) if adversary else {}
   if family == "sac":
     return cls("MlpPolicy", venv, seed=seed, buffer_size=500_000,
                learning_starts=5000, batch_size=512, train_freq=(16, "step"),
-               gradient_steps=16, gamma=0.99, verbose=0, device="cpu", **kw)
+               gradient_steps=16, gamma=0.99, verbose=0, device=device, **kw)
   return cls("MlpPolicy", venv, seed=seed, n_steps=64, batch_size=4096,
              gamma=0.99, ent_coef=1e-3, learning_rate=5e-4, adaptive_lr=True,
-             desired_kl=0.01, verbose=0, device="cpu", **kw)
+             desired_kl=0.01, verbose=0, device=device, **kw)
 
 
 def measure(model, adversary, n=32, eval_seed=1234, from_standstill=False):
@@ -122,8 +165,8 @@ def coverage(model, adversary):
 
 def run_arm(cell, arm, cls, adversary, seed, steps, a, out_dir):
   family = cell.split("-")[0]
-  n_envs = a.sac_envs if family == "sac" else a.ppo_envs
-  model = build(cls, adversary, seed, family, n_envs, a.spawn)
+  backend, n_envs, device = plan(a, family)
+  model = build(cls, adversary, seed, family, n_envs, a.spawn, backend, device)
   probe = ReachProbe(adversary, a.probe_every)
   t0 = time.time()
   model.learn(total_timesteps=steps, callback=probe)
@@ -135,7 +178,8 @@ def run_arm(cell, arm, cls, adversary, seed, steps, a, out_dir):
                                        from_standstill=True)["reach_rate"]
   r["coverage_reach"], r["coverage_safe"] = coverage(model, adversary)
   r.update(cell=cell, arm=arm, algo=cls.__name__, seed=seed, steps=steps,
-           wall_clock_s=round(wall, 1), n_envs=n_envs)
+           wall_clock_s=round(wall, 1), n_envs=n_envs, backend=backend,
+           device=device, steps_per_s=round(steps / max(wall, 1e-9)))
 
   if a.gifs:
     import matplotlib
@@ -168,8 +212,15 @@ def main():
   p.add_argument("--seeds", nargs="+", type=int, default=[0])
   p.add_argument("--ppo-steps", type=int, default=2_000_000)
   p.add_argument("--sac-steps", type=int, default=2_000_000)
-  p.add_argument("--ppo-envs", type=int, default=256)
-  p.add_argument("--sac-envs", type=int, default=16)
+  p.add_argument("--backend", choices=["auto", "numpy", "tensor"],
+                 default="auto", help="auto = numpy for PPO, tensor for SAC")
+  p.add_argument("--device", default="auto",
+                 help="'auto' = cuda on the tensor backend, else cpu")
+  p.add_argument("--ppo-envs", type=int, default=None,
+                 help="default 256 on either backend")
+  p.add_argument("--sac-envs", type=int, default=None,
+                 help="default 256 (tensor) / 16 (numpy) — NOT interchangeable, "
+                      "num_envs sets the update-to-data ratio")
   p.add_argument("--spawn", choices=["edge", "wide", "map"], default="wide")
   p.add_argument("--out-dir", default="experiments/bicycle5d_matrix")
   p.add_argument("--save-dir", default=None, help="save trained models here")
@@ -193,7 +244,8 @@ def main():
               f"reach={r['reach_rate']:5.0%} safe={r['safe_rate']:5.0%} "
               f"cover={r['coverage_reach']:5.0%} standstill={r['reach_from_standstill']:5.0%} "
               f"path={r['path_len']:5.2f}m ep_len={r['ep_len']:5.0f} "
-              f"({r['wall_clock_s']:.0f}s)", flush=True)
+              f"({r['wall_clock_s']:.0f}s, {r['backend']}@{r['n_envs']}/"
+              f"{r['device']}, {r['steps_per_s']:,} steps/s)", flush=True)
 
   # --- the assertion, per (family, player-count) cell ------------------------
   verdicts = []
@@ -226,13 +278,15 @@ def main():
   with open(os.path.join(a.out_dir, "matrix.md"), "w") as f:
     f.write("# bicycle5d validation matrix\n\n" + table + "\n\n")
     f.write("| cell | arm | algo | seed | steps | reach | safe | coverage_reach | "
-            "standstill | path (m) | ep_len | wall (s) |\n")
-    f.write("|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+            "standstill | path (m) | ep_len | backend | envs | wall (s) | steps/s |\n")
+    f.write("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
     for r in rows:
       f.write(f"| {r['cell']} | {r['arm']} | {r['algo']} | {r['seed']} | "
               f"{r['steps']:,} | {r['reach_rate']:.0%} | {r['safe_rate']:.0%} | "
               f"{r['coverage_reach']:.0%} | {r['reach_from_standstill']:.0%} | "
-              f"{r['path_len']:.2f} | {r['ep_len']:.0f} | {r['wall_clock_s']:.0f} |\n")
+              f"{r['path_len']:.2f} | {r['ep_len']:.0f} | "
+              f"{r['backend']}/{r['device']} | {r['n_envs']} | "
+              f"{r['wall_clock_s']:.0f} | {r['steps_per_s']:,} |\n")
   print(f"wrote {a.out_dir}/results.json and matrix.md")
 
 
