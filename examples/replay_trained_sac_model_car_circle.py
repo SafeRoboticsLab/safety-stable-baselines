@@ -136,7 +136,7 @@ def replay_sac_model(model_path: str, env_id: str = "SafetyCarCircle2-v0",
         deterministic: Use deterministic actions (True) or sample from policy (False)
         step_delay: Delay between steps for better visualization (seconds)
         filter_mode: Safety filter mode - "none", "value", or "rollout"
-        safety_model_path: Path to trained SafetySAC model (required for filters)
+        safety_model_path: Path to trained SafetySAC1P model (required for filters)
         filter_epsilon: Safety margin threshold for value filter
         rollout_horizon: Rollout horizon for rollout filter
         rollout_velocity_threshold: Velocity threshold for rollout filter
@@ -498,7 +498,7 @@ Examples:
                         choices=["none", "value", "rollout"],
                         help="Safety filter mode: 'none' (no filter), 'value' (Q-value based), 'rollout' (simulation based)")
     parser.add_argument("--safety-model", type=str, default=None,
-                        help="Path to trained SafetySAC model (required for value/rollout filters)")
+                        help="Path to trained SafetySAC1P model (required for value/rollout filters)")
     
     # Value filter options
     parser.add_argument("--epsilon", type=float, default=0.0,

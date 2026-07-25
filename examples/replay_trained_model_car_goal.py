@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to load and replay a trained SafetySAC model in the Circle environment with visual rendering.
+Script to load and replay a trained SafetySAC1P model in the Circle environment with visual rendering.
 """
 
 import os
@@ -13,7 +13,7 @@ from safety_gymnasium.safety_envs.safety_goal_margin import make_env
 
 # Add parent directory to path so we can import safety_sb3
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from safety_sb3 import SafetySAC
+from safety_sb3 import SafetySAC1P
 
 
 def replay_model(model_path: str, agent: str = "Car", level: int = 2, 
@@ -52,8 +52,8 @@ def replay_model(model_path: str, agent: str = "Car", level: int = 2,
     
     # Load the trained model
     try:
-        model = SafetySAC.load(model_path, env=env)
-        print(f"✓ Successfully loaded SafetySAC model")
+        model = SafetySAC1P.load(model_path, env=env)
+        print(f"✓ Successfully loaded SafetySAC1P model")
     except Exception as e:
         print(f"✗ Failed to load model: {e}")
         print("Make sure the model path is correct and the model was saved properly.")
@@ -115,15 +115,15 @@ def replay_model(model_path: str, agent: str = "Car", level: int = 2,
                     # Convert observation and action to tensor format
                     import torch
                     
-                    # For SafetySAC, we need to access the critic differently
-                    # SafetySAC has a different critic structure than standard SAC
+                    # For SafetySAC1P, we need to access the critic differently
+                    # SafetySAC1P has a different critic structure than standard SAC
                     device = next(model.critic.parameters()).device
                     
                     # Convert to tensors and move to device
                     obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
                     action_tensor = torch.FloatTensor(action).unsqueeze(0).to(device)
                     
-                    # Get Q-value from SafetySAC critic (expects separate obs and action)
+                    # Get Q-value from SafetySAC1P critic (expects separate obs and action)
                     with torch.no_grad():
                         q_value_output = model.critic(obs_tensor, action_tensor)
                         
@@ -246,7 +246,7 @@ def replay_model(model_path: str, agent: str = "Car", level: int = 2,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Replay a trained SafetySAC model")
+    parser = argparse.ArgumentParser(description="Replay a trained SafetySAC1P model")
     parser.add_argument("--model", "-m", type=str, default="checkpoints/safety_sac_car_circle2_70000_steps.zip",
                         help="Path to the trained model file")
     parser.add_argument("--agent", "-a", type=str, default="Car", 

@@ -7,16 +7,16 @@ import numpy as np
 # Add parent directory to path if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from safety_sb3.safety_sac import SafetySAC
+from safety_sb3.sac_1p import SafetySAC1P
 
 class SafetyFilterWrapper:
     """
-    Environment wrapper that filters actions using a trained SafetySAC model.
+    Environment wrapper that filters actions using a trained SafetySAC1P model.
     
     Logic:
-    - For each step(action), check if q(s, action) > 0 using SafetySAC critic
+    - For each step(action), check if q(s, action) > 0 using SafetySAC1P critic
     - If q(s, action) > 0: use the proposed action (safe)
-    - If q(s, action) <= 0: use SafetySAC actor π(s) instead (unsafe, so override)
+    - If q(s, action) <= 0: use SafetySAC1P actor π(s) instead (unsafe, so override)
     """
     
     def __init__(self, env, safety_model_path, epsilon: float = 0.0):
@@ -24,13 +24,13 @@ class SafetyFilterWrapper:
         self.observation_space = env.observation_space
         self.action_space = env.action_space
         
-        # Load the trained SafetySAC model
-        print(f"Loading SafetySAC model from {safety_model_path}")
-        self.safety_model = SafetySAC.load(safety_model_path)
+        # Load the trained SafetySAC1P model
+        print(f"Loading SafetySAC1P model from {safety_model_path}")
+        self.safety_model = SafetySAC1P.load(safety_model_path)
         
         # Get the device that the safety model is on
         self.device = next(self.safety_model.critic.parameters()).device
-        print(f"SafetySAC model is on device: {self.device}")
+        print(f"SafetySAC1P model is on device: {self.device}")
 
         self.epsilon = epsilon
 
@@ -65,16 +65,16 @@ class SafetyFilterWrapper:
         obs_tensor = torch.FloatTensor(current_obs).unsqueeze(0).to(self.device)  # Add batch dimension
         action_tensor = torch.FloatTensor(action).unsqueeze(0).to(self.device)    # Add batch dimension
         
-        # Check safety using SafetySAC critic: q(s, a)
+        # Check safety using SafetySAC1P critic: q(s, a)
         with torch.no_grad():
-            # Get Q-value from SafetySAC critic
-            # Note: SafetySAC has safety critic that outputs margin values
+            # Get Q-value from SafetySAC1P critic
+            # Note: SafetySAC1P has safety critic that outputs margin values
             # q > 0 means safe (positive margin), q <= 0 means unsafe (negative margin)
             
-            # SafetySAC critic expects separate observation and action arguments
+            # SafetySAC1P critic expects separate observation and action arguments
             q_value = self.safety_model.critic(obs_tensor, action_tensor)
             
-            # For SafetySAC, the critic outputs the margin g(s,a)
+            # For SafetySAC1P, the critic outputs the margin g(s,a)
             # We use the minimum of both critics for conservative safety decisions
             if isinstance(q_value, tuple):
                 q_value = torch.min(q_value[0], q_value[1])  # Take minimum of both critics (conservative)
@@ -88,7 +88,7 @@ class SafetyFilterWrapper:
             # Safe action - use proposed action
             final_action = action
         else:
-            # Unsafe action - use SafetySAC actor instead
+            # Unsafe action - use SafetySAC1P actor instead
             with torch.no_grad():
                 safe_action, _ = self.safety_model.predict(current_obs, deterministic=True)
                 final_action = safe_action

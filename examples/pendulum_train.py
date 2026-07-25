@@ -1,7 +1,7 @@
 """
 Adversarial disturbance test on Pendulum-v1 (safety-only).
 
-- Train SafetySAC where env reward = safety margin g(s).
+- Train SafetySAC1P where env reward = safety margin g(s).
 - Start eval from upright (theta=0).
 - Apply an adversarial torque that pushes the pendulum away from upright.
 - Compare unshielded vs shielded rollouts and save GIFs.
@@ -14,7 +14,7 @@ from gymnasium import spaces
 from gymnasium.core import ActType, Wrapper
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from safety_sb3 import SafetySAC, SafetyDQN, SafetyPPO, SafetyA2C, SafetyRolloutBuffer  # or: from safety_sac import...
+from safety_sb3 import SafetySAC1P, SafetyDQN1P, SafetyPPO1P, SafetyA2C1P, SafetyRolloutBuffer  # or: from safety_sac import...
 
 
 class PendulumSafety(gym.Wrapper):
@@ -75,7 +75,7 @@ def train_SAC():
     base_env = gym.make("Pendulum-v1")
     env = PendulumSafety(base_env)
 
-    model = SafetySAC(
+    model = SafetySAC1P(
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
@@ -99,7 +99,7 @@ def train_SAC():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, "pendulum")
     model.save(save_path)
-    print(f"Training complete! Saved trained SafetySAC model to {save_path}.zip")
+    print(f"Training complete! Saved trained SafetySAC1P model to {save_path}.zip")
 
 
 def train_DQN():
@@ -107,7 +107,7 @@ def train_DQN():
     env = PendulumSafety(base_env)
     env = DiscretizeActionWrapper(env, n_bins=41)
 
-    model = SafetyDQN(
+    model = SafetyDQN1P(
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
@@ -133,14 +133,14 @@ def train_DQN():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, "pendulum_disc")
     model.save(save_path)
-    print(f"Training complete! Saved trained SafetyDQN model to {save_path}.zip")
+    print(f"Training complete! Saved trained SafetyDQN1P model to {save_path}.zip")
 
 
 def train_PPO():
     base_env = gym.make("Pendulum-v1")
     env = PendulumSafety(base_env)
 
-    model = SafetyPPO(
+    model = SafetyPPO1P(
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
@@ -166,14 +166,14 @@ def train_PPO():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, "pendulum_ppo")
     model.save(save_path)
-    print(f"Training complete! Saved trained SafetyPPO model to {save_path}.zip")
+    print(f"Training complete! Saved trained SafetyPPO1P model to {save_path}.zip")
 
 
 def train_A2C():
     base_env = gym.make("Pendulum-v1")
     env = PendulumSafety(base_env)
 
-    model = SafetyA2C(
+    model = SafetyA2C1P(
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
@@ -198,7 +198,7 @@ def train_A2C():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, "pendulum_a2c")
     model.save(save_path)
-    print(f"Training complete! Saved trained SafetyA2C model to {save_path}.zip")
+    print(f"Training complete! Saved trained SafetyA2C1P model to {save_path}.zip")
 
 
 if __name__ == "__main__":

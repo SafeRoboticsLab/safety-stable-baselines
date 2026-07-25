@@ -18,7 +18,7 @@ from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnColli
 # so imports work when running from /examples
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from safety_sb3.safety_sac import SafetySAC
+from safety_sb3.sac_1p import SafetySAC1P
 
 
 class SafetyRolloutLoggingCallback(BaseCallback):
@@ -137,13 +137,13 @@ class SafetyRolloutFilter:
         self.observation_space = env.observation_space
         self.action_space = env.action_space
         
-        # Load the trained SafetySAC model for safety policy
-        print(f"Loading SafetySAC model from {safety_model_path}")
-        self.safety_model = SafetySAC.load(safety_model_path)
+        # Load the trained SafetySAC1P model for safety policy
+        print(f"Loading SafetySAC1P model from {safety_model_path}")
+        self.safety_model = SafetySAC1P.load(safety_model_path)
         
         # Get the device that the safety model is on
         self.device = next(self.safety_model.critic.parameters()).device
-        print(f"SafetySAC model is on device: {self.device}")
+        print(f"SafetySAC1P model is on device: {self.device}")
 
         self.horizon = horizon
         self.velocity_threshold = velocity_threshold
@@ -430,7 +430,7 @@ class ObservationStoringWrapper:
 
 if __name__ == "__main__":
     # ---------- argument parsing ----------
-    parser = argparse.ArgumentParser(description="Train SAC with SafetySAC rollout filter on CarGoal")
+    parser = argparse.ArgumentParser(description="Train SAC with SafetySAC1P rollout filter on CarGoal")
     parser.add_argument("--horizon", type=int, default=10,
                         help="Rollout horizon for safety checking (number of steps to simulate)")
     parser.add_argument("--velocity-threshold", type=float, default=0.1,
@@ -439,7 +439,7 @@ if __name__ == "__main__":
                         help="Experiment identifier suffix for distinguishing experiment sets")
     parser.add_argument("--safety-model-path", type=str, 
                         default="./experiments/20251009_1240_SafetySAC_CarGoal1_Pillar_2M_retrain/final/car_goal1_pillar.zip",
-                        help="Path to trained SafetySAC model for safety policy")
+                        help="Path to trained SafetySAC1P model for safety policy")
     parser.add_argument("--total-timesteps", type=int, default=1_000_000,
                         help="Total training timesteps")
     parser.add_argument("--lr", type=float, default=3e-4,
@@ -469,13 +469,13 @@ if __name__ == "__main__":
     os.makedirs(best_dir, exist_ok=True)
     os.makedirs(final_dir, exist_ok=True)
 
-    # Path to trained SafetySAC model
+    # Path to trained SafetySAC1P model
     safety_model_path = args.safety_model_path
 
     # Check if safety model exists
     if not os.path.exists(safety_model_path):
-        print(f"Error: SafetySAC model not found at {safety_model_path}")
-        print("Please train a SafetySAC model first using car_goal_safety_train.py")
+        print(f"Error: SafetySAC1P model not found at {safety_model_path}")
+        print("Please train a SafetySAC1P model first using car_goal_safety_train.py")
         print("Or update the safety_model_path to point to your trained model.")
         sys.exit(1)
 

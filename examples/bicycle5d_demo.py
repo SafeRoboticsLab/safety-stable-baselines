@@ -1,7 +1,7 @@
 """Avoid vs reach-avoid on the 5-D bicycle -- the contrast, rendered.
 
-    python examples/bicycle5d_demo.py                 # SafetyPPO vs ReachAvoidPPO
-    python examples/bicycle5d_demo.py --adversary     # IsaacsPPO vs GameplayPPO
+    python examples/bicycle5d_demo.py                 # SafetyPPO1P vs ReachAvoidPPO1P
+    python examples/bicycle5d_demo.py --adversary     # SafetyPPO2P vs ReachAvoidPPO2P
     python examples/bicycle5d_demo.py --no-wandb --render out.png
 
 What you should see:
@@ -27,8 +27,8 @@ import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 
-from safety_sb3 import (GameplayPPO, GameplaySAC, IsaacsPPO, IsaacsSAC,
-                        ReachAvoidPPO, ReachAvoidSAC, SafetyPPO, SafetySAC,
+from safety_sb3 import (ReachAvoidPPO2P, ReachAvoidSAC2P, SafetyPPO2P, SafetySAC2P,
+                        ReachAvoidPPO1P, ReachAvoidSAC1P, SafetyPPO1P, SafetySAC1P,
                         StdCapCallback)
 from safety_sb3.testing import BicycleGoal
 from safety_sb3.testing.bicycle5d_vec import BicycleGoalVec
@@ -163,11 +163,11 @@ def main():
 
   sac = a.family == "sac"
   if sac:
-    avoid_cls = IsaacsSAC if a.adversary else SafetySAC
-    ra_cls = GameplaySAC if a.adversary else ReachAvoidSAC
+    avoid_cls = SafetySAC2P if a.adversary else SafetySAC1P
+    ra_cls = ReachAvoidSAC2P if a.adversary else ReachAvoidSAC1P
   else:
-    avoid_cls = IsaacsPPO if a.adversary else SafetyPPO
-    ra_cls = GameplayPPO if a.adversary else ReachAvoidPPO
+    avoid_cls = SafetyPPO2P if a.adversary else SafetyPPO1P
+    ra_cls = ReachAvoidPPO2P if a.adversary else ReachAvoidPPO1P
   group = ("bicycle5d-sac" if sac else "bicycle5d") + ("-adv" if a.adversary else "")
   # reach-avoid FIRST (the interesting arm); avoid is the control. --arms lets
   # you run just one while iterating.

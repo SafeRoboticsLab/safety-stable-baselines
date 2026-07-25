@@ -1,6 +1,6 @@
 """Reach-avoid value function: PPO vs SAC, on the rescaled-l bicycle.
 
-Trains ReachAvoidPPO (on-policy) and ReachAvoidSAC (off-policy), then renders
+Trains ReachAvoidPPO1P (on-policy) and ReachAvoidSAC1P (off-policy), then renders
 their value maps side-by-side on the 4 eval maps. The point:
 
 * PPO learns V(s) only on its ON-POLICY tube; the value-map probes (v=0, every
@@ -22,7 +22,7 @@ import os
 
 import numpy as np
 
-from safety_sb3 import ReachAvoidPPO, ReachAvoidSAC
+from safety_sb3 import ReachAvoidPPO1P, ReachAvoidSAC1P
 from safety_sb3.testing.bicycle5d_vec import BicycleGoalVec
 from safety_sb3.testing.bicycle5d_render import (
   EVAL_MAPS, compare_value_maps, multi_car_rollout)
@@ -71,16 +71,16 @@ def main():
         plt.close(fig)
     return cov
 
-  print("=== training ReachAvoidPPO (on-policy, wide spawn, adaptive_lr) ===", flush=True)
-  ppo = ReachAvoidPPO("MlpPolicy", BicycleGoalVec(256, seed=a.seed, spawn="wide"),
+  print("=== training ReachAvoidPPO1P (on-policy, wide spawn, adaptive_lr) ===", flush=True)
+  ppo = ReachAvoidPPO1P("MlpPolicy", BicycleGoalVec(256, seed=a.seed, spawn="wide"),
                       n_steps=64, batch_size=4096, gamma=0.99, ent_coef=1e-3,
                       learning_rate=5e-4, adaptive_lr=True, desired_kl=0.01,
                       seed=a.seed, verbose=0, device="cpu")
   ppo.learn(a.ppo_steps)
   ppo_cov = log_per_model("PPO", ppo)                    # <-- wandb populates here
 
-  print("=== training ReachAvoidSAC (off-policy) ===", flush=True)
-  sac = ReachAvoidSAC("MlpPolicy", BicycleGoalVec(16, seed=a.seed, spawn="wide"),
+  print("=== training ReachAvoidSAC1P (off-policy) ===", flush=True)
+  sac = ReachAvoidSAC1P("MlpPolicy", BicycleGoalVec(16, seed=a.seed, spawn="wide"),
                       buffer_size=500_000, learning_starts=5000, batch_size=512,
                       train_freq=(16, "step"), gradient_steps=16, gamma=0.99,
                       seed=a.seed, verbose=0, device="cpu")

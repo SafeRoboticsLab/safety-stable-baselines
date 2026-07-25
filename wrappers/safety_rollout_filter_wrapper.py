@@ -11,7 +11,7 @@ from safety_gymnasium.safety_envs.terminate_on_collision import TerminateOnColli
 # Add parent directory to path if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from safety_sb3.safety_sac import SafetySAC
+from safety_sb3.sac_1p import SafetySAC1P
 
 
 class SafetyRolloutFilter:
@@ -32,13 +32,13 @@ class SafetyRolloutFilter:
         self.observation_space = env.observation_space
         self.action_space = env.action_space
         
-        # Load the trained SafetySAC model for safety policy
-        print(f"Loading SafetySAC model from {safety_model_path}")
-        self.safety_model = SafetySAC.load(safety_model_path)
+        # Load the trained SafetySAC1P model for safety policy
+        print(f"Loading SafetySAC1P model from {safety_model_path}")
+        self.safety_model = SafetySAC1P.load(safety_model_path)
         
         # Get the device that the safety model is on
         self.device = next(self.safety_model.critic.parameters()).device
-        print(f"SafetySAC model is on device: {self.device}")
+        print(f"SafetySAC1P model is on device: {self.device}")
 
         self.horizon = horizon
         self.velocity_threshold = velocity_threshold
@@ -83,7 +83,7 @@ class SafetyRolloutFilter:
             # Safe action - use proposed action
             final_action = action
         else:
-            # Unsafe action - use SafetySAC actor instead
+            # Unsafe action - use SafetySAC1P actor instead
             with torch.no_grad():
                 safe_action, _ = self.safety_model.predict(current_obs, deterministic=True)
                 final_action = safe_action

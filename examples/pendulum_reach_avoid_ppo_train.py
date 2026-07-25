@@ -1,4 +1,4 @@
-"""Validation for ReachAvoidPPO / IsaacsPPO on a classic pendulum task.
+"""Validation for ReachAvoidPPO1P / SafetyPPO2P on a classic pendulum task.
 
 Reach-avoid pendulum (Hsu et al., RSS 2021 style):
     avoid:  |theta| > 30 deg                 -> g(s) = pi/6 - |theta|
@@ -7,11 +7,11 @@ Reach-avoid pendulum (Hsu et al., RSS 2021 style):
 Episodes spawn INSIDE the safe set (rejection via direct state write).
 Success = reach the target band without ever leaving the safe set.
 
-IsaacsPPO variant: the action space is [ctrl_torque, dstb_torque]; the
+SafetyPPO2P variant: the action space is [ctrl_torque, dstb_torque]; the
 adversary applies up to 30% of the control authority as a disturbance torque.
 
-Validated results (200k steps, seed 0): ReachAvoidPPO 100% reach-avoid
-success (2 seeds); IsaacsPPO 100%/100%/99% vs zero/random/learned adversary
+Validated results (200k steps, seed 0): ReachAvoidPPO1P 100% reach-avoid
+success (2 seeds); SafetyPPO2P 100%/100%/99% vs zero/random/learned adversary
 with a full 5+5 leaderboard archive.
 
 Run (safety_sb3 conda env):
@@ -32,7 +32,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from safety_sb3 import IsaacsPPO, ReachAvoidPPO  # noqa: E402
+from safety_sb3 import SafetyPPO2P, ReachAvoidPPO1P  # noqa: E402
 
 ANGLE_LIMIT = np.pi / 6
 
@@ -130,7 +130,7 @@ def main():
     def make():
       return Monitor(PendulumReachAvoid(gym.make("Pendulum-v1")))
     venv = DummyVecEnv([make for _ in range(8)])
-    model = ReachAvoidPPO(
+    model = ReachAvoidPPO1P(
       "MlpPolicy", venv, n_steps=256, batch_size=512, gamma=0.99,
       gae_lambda=0.95, learning_rate=3e-4, ent_coef=0.005, verbose=1,
     )
@@ -141,7 +141,7 @@ def main():
     def make():
       return Monitor(PendulumIsaacs(gym.make("Pendulum-v1"), dstb_scale=0.3))
     venv = DummyVecEnv([make for _ in range(8)])
-    model = IsaacsPPO(
+    model = SafetyPPO2P(
       "MlpPolicy", venv, ctrl_action_dim=1,
       dstb_pretrain_rollouts=15, ctrl_rollouts_per_cycle=4,
       dstb_rollouts_per_cycle=1, use_leaderboard=True,

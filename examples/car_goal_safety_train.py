@@ -10,9 +10,9 @@ from wandb.integration.sb3 import WandbCallback  # syncs TB logs + optional mode
 
 from safety_gymnasium.safety_envs.safety_goal_margin import make_env
 
-# so "from safety_sb3 import SafetySAC" works when running from /examples
+# so "from safety_sb3 import SafetySAC1P" works when running from /examples
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from safety_sb3 import SafetySAC
+from safety_sb3 import SafetySAC1P
 
 
 if __name__ == "__main__":
@@ -38,7 +38,7 @@ if __name__ == "__main__":
         entity="safe-princeton",
         name=run_name,
         config={
-            "algo": "SafetySAC",
+            "algo": "SafetySAC1P",
             "env_id": "SafetyCarGoal1-v0",
             "safety_clearance": 0.02,
             "exp_suffix": EXP_SUFFIX,
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     eval_env = Monitor(eval_env)
 
     # ---------- model ----------
-    model = SafetySAC(
+    model = SafetySAC1P(
         policy="MlpPolicy",
         env=env,
         learning_rate=1e-5,
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     # ---------- final save ----------
     final_path = os.path.join(final_dir, "car_goal1_pillar")
     model.save(final_path)
-    print(f"Training complete! Saved final SafetySAC model to {final_path}.zip")
+    print(f"Training complete! Saved final SafetySAC1P model to {final_path}.zip")
 
     # ---------- tidy up ----------
     env.close()
