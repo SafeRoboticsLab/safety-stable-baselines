@@ -1,7 +1,7 @@
 # Tunable hyperparameters
 
-Every safety learner (`SafetyPPO`/`SafetySAC` and their reach-avoid / two-player
-subclasses `ReachAvoidPPO/SAC`, `GameplayPPO/SAC`, `IsaacsPPO/SAC`) takes the
+Every learner in the MAP roster — `{Safety,ReachAvoid,Cumulative}{PPO,SAC,A2C,DQN}{1P,2P}`,
+so `SafetyPPO1P`, `ReachAvoidSAC2P`, and the rest — takes the
 knobs below as constructor arguments. Defaults are chosen to match the reference
 ISAACS codebase (`safe_adaptation_dev`) out of the box. Anything not listed here
 is a stock Stable-Baselines3 argument.
@@ -54,7 +54,7 @@ two-player learners the same bounds clamp **both** the ctrl and dstb alphas.
 
 ## Per-agent / per-network learning rates (two-player SAC)
 
-In the two-player games (`GameplaySAC` / `IsaacsSAC`) each network can take its
+In the two-player games (`ReachAvoidSAC2P` / `SafetySAC2P`) each network can take its
 own learning rate. Each defaults to `None` → falls back to the shared
 `learning_rate`, so single-lr callers are unchanged.
 
@@ -95,7 +95,7 @@ sampled by a softmax over pairwise reach-avoid success scores.
 
 > **⚡ Throughput — the league eval can dominate wall-clock.** Each `_leaderboard_step`
 > runs `~(nc+nd+2)` pairings, and each pairing steps the sim `n_eval_episodes × episode_len`
-> times. Profiling a two-player GameplaySAC found ONE `_leaderboard_step` ≈ **100 s** vs a
+> times. Profiling a two-player ReachAvoidSAC2P found ONE `_leaderboard_step` ≈ **100 s** vs a
 > ~90 ms train cycle — the league was **~97 % of wall-clock** at 1024 envs with the old
 > `leaderboard_freq=10_000` / `n_eval_episodes=10`, capping throughput at ~500 FPS. The cost is
 > the **volume of sim steps**, not the obs transport. Two levers, both safety-neutral (the league
@@ -106,7 +106,7 @@ sampled by a softmax over pairwise reach-avoid success scores.
 >    on-device `_eval_pair_tensor` (no numpy VecEnv, no per-step host↔device sync; obs normalized
 >    via the live training normalizer).
 >
-> Together these took a 1024-env GameplaySAC from **~500 → ~19,000 FPS (~30×)** — a 100 M-step run
+> Together these took a 1024-env ReachAvoidSAC2P from **~500 → ~19,000 FPS (~30×)** — a 100 M-step run
 > from ~55 h to ~1.5 h. The zoo `examples/train_sac.py` uses these throughput defaults
 > (`--leaderboard-freq 2_000_000 --leaderboard-episodes 3`, raw tensor eval env).
 

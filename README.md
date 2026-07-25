@@ -2,7 +2,7 @@
 
 Lightweight add-on for [Stable-Baselines3](https://stable-baselines3.readthedocs.io/)
 implementing **Hamilton–Jacobi safety RL** (Fisac et al., ICRA '19), **reach-avoid RL**
-(Hsu et al., RSS '21) and **adversarial reach-avoid / ISAACS** (Hsu, Nguyen et al.,
+(Hsu et al., RSS '21) and **adversarial (two-player) safety RL** (Hsu, Nguyen et al.,
 L4DC '23) — plus a GPU-resident tensor path for massively parallel simulators
 (mjlab / Isaac-style).
 
@@ -11,37 +11,69 @@ package and still feels native to SB3 users: same constructors, same `learn()`, 
 callbacks and loggers.
 
 📖 **[docs/API.md](docs/API.md)** is the canonical API reference — the env contract,
-the 2×2 of learners, the backups, and `terminal_type`. Start there to integrate the
+the MAP taxonomy, the backups, and `terminal_type`. Start there to integrate the
 algorithms into your own project.
 
-## Algorithms
+## Algorithms — here's a MAP
 
-The learners form a **2×2 over {problem} × {players}**. Pick the cell that matches
-your task — the two problems take *different* value operators, and avoid is **not**
+**Here's a MAP to navigate the codebase — Mode. Algorithm. Players.**
+
+```
+M = Mode       Safety | ReachAvoid | Cumulative    (which Bellman operator)
+A = Algorithm  PPO | SAC | A2C | DQN               (which RL method)
+P = Players    1P | 2P                             (single | zero-sum game)
+```
+
+Every class name is those three axes, in that order, and nothing else:
+
+```
+SafetyPPO1P        avoid, PPO, single-player
+ReachAvoidSAC2P    reach-avoid, SAC, control-vs-disturbance
+CumulativePPO1P    ordinary reward-maximizing PPO
+```
+
+So the roster is just the product. Pick the **Mode** that matches your task first —
+the three take *genuinely different* value operators, and avoid is **not**
 expressible as a reach-avoid instance (see below).
 
-|  | **avoid** (stay safe forever) | **reach-avoid** (reach it, staying safe throughout) |
-|---|---|---|
-| **single-player** | `SafetyPPO` `SafetySAC` `SafetyDQN` `SafetyA2C` | `ReachAvoidPPO` `ReachAvoidSAC` |
-| **two-player** (ctrl max + dstb min) | `IsaacsPPO` `IsaacsSAC` | `GameplayPPO` `GameplaySAC` |
-
-| class | base | backup (value target) | anchor |
+| Algorithm | `Safety` (stay safe forever) | `ReachAvoid` (reach it, staying safe throughout) | `Cumulative` (ordinary RL) |
 |---|---|---|---|
-| `SafetySAC` | SAC | `min(g, V')` | `g` |
-| `SafetyDQN` | DQN | `min(g, V')` | `g` |
-| `SafetyPPO` | PPO | `min(g, V')` | `g` |
-| `SafetyA2C` | A2C | `min(g, V')` | `g` |
-| `ReachAvoidSAC` | SafetySAC | `min(g, max(l, V'))` | `min(l, g)` |
-| `ReachAvoidPPO` | SafetyPPO | `min(g, max(l, V'))` | `min(l, g)` |
-| `IsaacsSAC` | GameplaySAC | `min(g, V')`, two-player | `g` |
-| `IsaacsPPO` | GameplayPPO | `min(g, V')`, two-player | `g` |
-| `GameplaySAC` | ReachAvoidSAC | `min(g, max(l, V'))`, two-player | `min(l, g)` |
-| `GameplayPPO` | ReachAvoidPPO | `min(g, max(l, V'))`, two-player | `min(l, g)` |
+| **PPO** | `SafetyPPO1P` `SafetyPPO2P` | `ReachAvoidPPO1P` `ReachAvoidPPO2P` | `CumulativePPO1P` |
+| **SAC** | `SafetySAC1P` `SafetySAC2P` | `ReachAvoidSAC1P` `ReachAvoidSAC2P` | `CumulativeSAC1P` |
+| **A2C** | `SafetyA2C1P` | `ReachAvoidA2C1P` | `CumulativeA2C1P` |
+| **DQN** | `SafetyDQN1P` | — *(not possible, see below)* | `CumulativeDQN1P` |
 
-`Isaacs*` = ISAACS (Hsu et al. 2022), the two-player **avoid** game — its paper has
-no target set and no `l`. `Gameplay*` = Gameplay Filters (Hsu et al. 2024), which
-extends ISAACS to reach-avoid. **These names changed meaning in v0.2.0** — see
-[RELEASE_NOTES.md](RELEASE_NOTES.md).
+| Mode | backup (value target) | anchor |
+|---|---|---|
+| `Safety` | `min(g, V')` | `g` |
+| `ReachAvoid` | `min(g, max(l, V'))` | `min(l, g)` |
+| `Cumulative` | `r + γ·V'` | — (not a margin) |
+
+In `2P`, the control player maximizes the value and a disturbance player minimizes it,
+with a league of archived opponents to damp cycling.
+
+Two gaps in the product are deliberate. **DQN has no reach-avoid variant**: SB3's
+discrete-action replay buffer carries no target margin `l(s)`, so the operator is not
+computable there — asking for it raises rather than quietly computing something else.
+**`Cumulative` has no 2P variant**: an adversarial game whose value is a discounted
+return is a different research question, not a mode of these.
+
+`Cumulative` is not a safety mode — its reward is a reward, not a margin, and `V ≥ 0`
+means nothing. It exists so a *nominal* baseline runs through every line of the same
+code as the safety learners: the control for "is the safety operator doing the work,
+or is it just PPO?"
+
+<details>
+<summary>Which papers do these correspond to?</summary>
+
+You should not need this to use the library — that is the point of MAP — but for
+citation: `Safety*1P` is Fisac et al. ICRA'19; `ReachAvoid*1P` is Hsu et al. RSS'21;
+`Safety*2P` is **ISAACS** (Hsu, Nguyen et al. L4DC'23), the two-player *avoid* game,
+whose paper has no target set and no `l`; `ReachAvoid*2P` is **Gameplay Filters**
+(Hsu et al. 2024), which extends ISAACS to reach-avoid. Before v0.4.0 those last two
+were named `Isaacs*` and `Gameplay*` — see [RELEASE_NOTES.md](RELEASE_NOTES.md).
+
+</details>
 
 Every backup is defined once in [`safety_sb3/backups.py`](safety_sb3/backups.py)
 and shared by all learners; read that module for the operators and their
@@ -78,8 +110,8 @@ stops applying, so the critic can wrongly certify reachability. RSS'21 says of t
 `g`-anchored form (its eq. 13) that it approximates "safety or liveness problems, **but
 not both**".
 
-`ReachAvoid*`/`Gameplay*` take `terminal_type` (`"all"` → `min(l, g)`, the default and
-the horizon condition; `"g"` → `g` alone), matching the reference implementation.
+The `ReachAvoid*` learners take `terminal_type` (`"all"` → `min(l, g)`, the default
+and the horizon condition; `"g"` → `g` alone), matching the reference implementation.
 
 #### Avoid is not a reach-avoid instance — don't degenerate `l`
 
@@ -104,7 +136,8 @@ rather than hunting for a clever `l`.
   outside the failure set. The env must `terminate` the episode when `g < 0`.
 - **`l(s)` — target margin — rides on `info["l_x"]`** (numpy path) or is returned
   directly by `step_tensor` (tensor path). `l ≥ 0` iff the state is inside the target
-  set. Only the ReachAvoid/Isaacs algorithms read it.
+  set. Only the `ReachAvoid*` learners read it — an avoid learner has nowhere to put
+  it, by construction.
 - **Never normalize rewards** — the reward *is* the margin; `VecNormalize(norm_reward=True)`
   corrupts the backup. Observation normalization is fine.
 - A trained value function satisfies `V(s) ≥ 0` ⇔ (avoid) "the policy can stay safe
@@ -123,7 +156,7 @@ def step_tensor(self, actions):          # all torch, on env.device
 ```
 
 and every algorithm above detects it (`is_tensor_env`) and switches to torch-native
-rollout collection with `TensorSafetyRolloutBuffer` / `TensorReachAvoidRolloutBuffer`
+rollout collection with the `Tensor*RolloutBuffer` matching its Mode
 (on-policy) or `TensorReplayBuffer` (off-policy) — identical backup math, no numpy on
 the hot path. `TensorVecNormalize` provides on-device running observation
 normalization. See `tests/test_tensor_sac.py` for a complete minimal example
@@ -167,7 +200,7 @@ Wrap any gym env so the reward is the safety margin and breaches terminate:
 ```python
 import gymnasium as gym
 import numpy as np
-from safety_sb3 import SafetySAC
+from safety_sb3 import SafetySAC1P
 
 
 class PendulumSafety(gym.Wrapper):
@@ -180,13 +213,14 @@ class PendulumSafety(gym.Wrapper):
         return obs, float(g), terminated or g < 0, truncated, info
 
 
-model = SafetySAC("MlpPolicy", PendulumSafety(gym.make("Pendulum-v1")),
+model = SafetySAC1P("MlpPolicy", PendulumSafety(gym.make("Pendulum-v1")),
                   gamma=0.995, verbose=1)
 model.learn(100_000)
 ```
 
 For reach-avoid, additionally return the target margin in the info dict
-(`info["l_x"] = l`) and train `ReachAvoidPPO` / `ReachAvoidSAC` the same way.
+(`info["l_x"] = l`) and train `ReachAvoidPPO1P` / `ReachAvoidSAC1P` the same way — the
+class name is the only thing that changes.
 `examples/pendulum_reach_avoid_ppo_train.py` is the runnable version.
 
 ## Fine-tuning stability
@@ -207,13 +241,20 @@ python -m pytest tests/ -q
 
 - `tests/test_backups.py` — unit tests of the safety / reach-avoid Bellman recursions
   (terminal anchoring, timeout bootstrap, target banking, fixed-point consistency).
-- `tests/test_ppo_smoke.py` — `SafetyPPO`/`ReachAvoidPPO` end-to-end on a 1-D double
+- `tests/test_taxonomy.py` — **MAP itself**: every class's `_MODE` and player count
+  match its name, the exported roster is exactly the product, buffers carry a Mode and
+  no player count, reach-avoid is a mixin that avoid learners never receive, and DQN
+  refuses reach-avoid.
+- `tests/test_ppo_smoke.py` — `SafetyPPO1P`/`ReachAvoidPPO1P` end-to-end on a 1-D double
   integrator (seconds, CPU).
-- `tests/test_tensor_sac.py` — tensor-path buffer semantics + `SafetySAC`/
-  `ReachAvoidSAC` learning on the same task (~2 min, CPU).
+- `tests/test_tensor_sac.py` — tensor-path buffer semantics + `SafetySAC1P`/
+  `ReachAvoidSAC1P` (and the 2P pair) learning on the same task (~2 min, CPU).
 - `tests/test_abstract_dp.py` — the backup is a *parameter*: mode dispatch on the
-  SAC/DQN/buffer paths, the cumulative (standard-RL) operator, and the regression
-  guard for the entropy-temperature clamp the old copied `train()` had dropped.
+  SAC/DQN/buffer paths, the cumulative (standard-RL) operator, `train()` living on the
+  players axis, and the regression guard for the entropy-temperature clamp the old
+  copied `train()` had dropped.
+- `tests/test_two_player_lr.py` — per-network / per-actor learning rates and StepLR
+  decay in the two-player SAC learners.
 
 ## References
 

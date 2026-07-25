@@ -7,7 +7,7 @@ path keeps EVERYTHING on device:
 
     env.step_tensor(actions) -> (obs, reward_g, dones, timeouts, l_x)
 
-all ``torch.Tensor`` on ``env.device``. The Safety* algorithms detect
+all ``torch.Tensor`` on ``env.device``. The learners detect
 ``is_tensor_env`` and switch to a torch-native ``collect_rollouts`` +
 :mod:`safety_sb3.tensor_buffers` (identical backup math, no numpy anywhere on
 the hot path).

@@ -4,11 +4,11 @@ The library's reference validation env. Small, dependency-light (numpy only),
 trains to convergence in minutes on CPU, and -- the point -- it makes the
 difference between the two problems VISIBLE:
 
-* **avoid** (`SafetyPPO` / `IsaacsPPO`): nothing rewards motion. `g > 0` is
+* **avoid** (`SafetyPPO1P` / `SafetyPPO2P`): nothing rewards motion. `g > 0` is
   already satisfied where the car starts, so the optimal avoid policy is to
   **sit still** (and swerve only if something approaches). That is correct, and
   it is the negative control.
-* **reach-avoid** (`ReachAvoidPPO` / `GameplayPPO`): the car must drive to the
+* **reach-avoid** (`ReachAvoidPPO1P` / `ReachAvoidPPO2P`): the car must drive to the
   goal without hitting anything.
 
 So `reach_rate(reach-avoid) >> reach_rate(avoid)` is the discriminating
@@ -152,8 +152,8 @@ class BicycleGoal(gym.Env):
 
   :param adversary: if True the action is one ``Box(2 + 5)``: ``[0:2]`` is the
       control (accel, omega) and ``[2:7]`` the disturbance, matching the
-      two-player env contract (``ctrl_action_dim=2``). Use with ``IsaacsPPO``
-      (avoid) or ``GameplayPPO`` (reach-avoid).
+      two-player env contract (``ctrl_action_dim=2``). Use with ``SafetyPPO2P``
+      (avoid) or ``ReachAvoidPPO2P`` (reach-avoid).
   :param randomize: jitter obstacle/goal placement each episode (default True).
       Off makes the scene memorizable — only turn it off for a fixed-scene demo.
   :param terminate_on_goal: end the episode once the goal is reached. Safe to

@@ -31,9 +31,10 @@ Rules, each of which has cost real debugging (see BEST_PRACTICES):
   or any reward scaler silently destroys the backup. Observation normalization is fine.
 - **Terminate on `g < 0`.** Letting the sim run past a violation leaks post-failure
   states into the value target.
-- **`l` is read only by the reach-avoid column** (`ReachAvoid*`, `Gameplay*`). The
-  avoid column (`Safety*`, `Isaacs*`) ignores it. An avoid task should not invent one
-  — see §5.
+- **`l` is read only by the `ReachAvoid*` learners.** The `Safety*` learners do not
+  ignore it — they have nowhere to put it. Their buffers carry no `l` column at all,
+  which is a structural guarantee rather than a convention. An avoid task should not
+  invent one — see §5.
 
 ### Numpy path vs tensor path
 
@@ -46,21 +47,75 @@ Rules, each of which has cost real debugging (see BEST_PRACTICES):
 
 ---
 
-## 2. The learners — a 2×2 over {problem} × {players}
+## 2. The learners — here's a MAP
 
-|  | **avoid** (stay safe forever) | **reach-avoid** (reach it, staying safe) |
+**Here's a MAP to navigate the codebase — Mode. Algorithm. Players.**
+
+```
+M = Mode       Safety | ReachAvoid | Cumulative    (which Bellman operator)
+A = Algorithm  PPO | SAC | A2C | DQN               (which RL method)
+P = Players    1P | 2P                             (single | zero-sum game)
+```
+
+A class name is those three axes in that order, so the roster is the product:
+
+| Algorithm | `Safety` (stay safe forever) | `ReachAvoid` (reach it, staying safe) | `Cumulative` (ordinary RL) |
+|---|---|---|---|
+| **PPO** | `SafetyPPO1P` `SafetyPPO2P` | `ReachAvoidPPO1P` `ReachAvoidPPO2P` | `CumulativePPO1P` |
+| **SAC** | `SafetySAC1P` `SafetySAC2P` | `ReachAvoidSAC1P` `ReachAvoidSAC2P` | `CumulativeSAC1P` |
+| **A2C** | `SafetyA2C1P` | `ReachAvoidA2C1P` | `CumulativeA2C1P` |
+| **DQN** | `SafetyDQN1P` | — *(not possible)* | `CumulativeDQN1P` |
+
+Pick the **Mode** by your problem (does the task have a target to reach? is it a
+safety problem at all?) and the **Players** by whether you train against a worst-case
+disturbance adversary. The Algorithm axis is the ordinary RL choice — on-policy and
+large `n_envs` favour PPO; sample efficiency favours SAC.
+
+**DQN has no `ReachAvoid` variant.** MAP would predict one; this is the single place
+the product does not close. SB3's discrete-action `ReplayBuffer` carries no `l(s)`, so
+the reach-avoid operator cannot be evaluated. That is a missing capability, not a
+naming gap, so `mode="reach-avoid"` raises at construction instead of silently
+computing something else. Use `ReachAvoidSAC1P` (continuous actions) or add an
+`l`-carrying discrete replay buffer.
+
+**`Cumulative` has no `2P` variant** — an adversarial game whose value is a discounted
+return is a different research question, not a mode of these.
+
+> Before **v0.4.0** the two-player classes were named `Isaacs*` (avoid) and
+> `Gameplay*` (reach-avoid), after the papers. Those names are gone, with no
+> compatibility shims. See RELEASE_NOTES.md for the migration table.
+
+### `2P` is not one algorithm — PPO and SAC play the game differently
+
+Both `*PPO2P` and `*SAC2P` hold two actors, and it is tempting to read them as one
+algorithm with two optimizers. They are not, and the difference is forced by **where
+each family's critic takes its action**:
+
+|  | `*SAC2P` | `*PPO2P` |
 |---|---|---|
-| **single-player** | `SafetyPPO` `SafetySAC` `SafetyDQN` `SafetyA2C` | `ReachAvoidPPO` `ReachAvoidSAC` |
-| **two-player** (ctrl max + dstb min) | `IsaacsPPO` `IsaacsSAC` | `GameplayPPO` `GameplaySAC` |
+| critic | **one** twin critic `Q(s, [a_ctrl, a_dstb])` | **two** independent `V(s)` |
+| data | one replay buffer | two rollout buffers |
+| scheduling | continuous updates, no phases | a phase machine (dstb pretrain, then K/M cycles) |
+| what it solves | **the minimax game as ISAACS formulates it** | **an alternating best-response approximation** |
 
-- `Isaacs*` = ISAACS (Hsu et al. 2022), the two-player **avoid** game — no target set, no `l`.
-- `Gameplay*` = Gameplay Filters (Hsu et al. 2024), which extends ISAACS to reach-avoid.
+Because SAC's critic takes the action, that single `Q` *is* the game value: both
+actors differentiate through the same object (ctrl ascends it, dstb descends it),
+nothing needs scheduling, and replay makes the learner indifferent to whose policy
+generated the data. PPO's critic is state-only, so it cannot represent "the value of
+this joint action" — each player needs its own advantage, its own importance ratio,
+and, because PPO is on-policy, its own freshly collected data. That is exactly what
+the phase machine exists for, and exactly why SAC needs no phases.
 
-> These names changed meaning in **v0.2.0**. Pre-v0.2.0 `Isaacs*` were reach-avoid.
-> See RELEASE_NOTES.md before upgrading old code.
+So they are **not interchangeable**, and results from one do not transfer to the
+other. There is also deliberately no cross-family `AbstractTwoPlayer` base: the two
+differ in their *state* — one critic vs two, one buffer vs two, phases vs none — not
+merely in their update loops, so a shared parent could only hold the names.
 
-Pick the **row** by your problem (does the task have a target to reach?) and the
-**column** by whether you train against a worst-case disturbance adversary.
+The league (archived opponents) reflects this too. `*SAC2P` scores the board with
+dedicated eval episodes and samples **one** archived opponent per rollout; `*PPO2P`
+has no eval env and scores from training outcomes with an EMA, facing a whole
+**population** at once by assigning opponents to env slices. Both use the shared
+`Leaderboard`; neither estimator is a special case of the other.
 
 ---
 
@@ -100,7 +155,7 @@ applying, and the critic is unsound to shield with. This was the v0.1.0 bug.
 operator: its first argument is a *reward*, not a margin, and `V ≥ 0` means
 nothing. It is a mode because the learners take the operator as a parameter, so
 plain reward-maximizing RL costs one branch: `AbstractSAC(…, mode="cumulative")`
-is SAC, `SafetyDQN(…, mode="cumulative")` is DQN, and
+is SAC, `SafetyDQN1P(…, mode="cumulative")` is DQN, and
 `SafetyRolloutBuffer(…, mode="cumulative")` reduces exactly to SB3's GAE
 (asserted in `tests/test_abstract_dp.py`). Use it for a nominal baseline that
 shares every line of the safety learners' code.
@@ -134,9 +189,9 @@ It is a **first-class constructor kwarg** on every reach-avoid learner and is
 ignored (harmlessly) by the avoid learners:
 
 ```python
-ReachAvoidPPO("MlpPolicy", env, terminal_type="all")     # default
-ReachAvoidSAC("MlpPolicy", env, terminal_type="g")
-GameplayPPO("MlpPolicy", env, ctrl_action_dim=2, terminal_type="all")
+ReachAvoidPPO1P("MlpPolicy", env, terminal_type="all")     # default
+ReachAvoidSAC1P("MlpPolicy", env, terminal_type="g")
+ReachAvoidPPO2P("MlpPolicy", env, ctrl_action_dim=2, terminal_type="all")
 ```
 
 `terminal_type` is the algorithm half of a pairing whose environment half is the
@@ -164,7 +219,7 @@ recursion to reduce (`max(l,V')=V'` ⟹ `l ≤ V'`); since `V' ≤ g`, that requ
   healthy-looking `ep_len`/`ep_rew`/`critic_loss`.
 - `l ≡ 0` or `+C`: `V ≡ g`, **no lookahead** — coming failures never propagate.
 
-Use the avoid **column** (`SafetyPPO` single-player, `IsaacsPPO` two-player). That
+Use the avoid **column** (`SafetyPPO1P` single-player, `SafetyPPO2P` two-player). That
 is what the reference does — it switches operator, never degenerates `l`.
 
 ---
@@ -173,22 +228,28 @@ is what the reference does — it switches operator, never degenerates `l`.
 
 ```python
 from safety_sb3 import (
-    # single-player avoid
-    SafetyPPO, SafetySAC, SafetyDQN, SafetyA2C,
-    # single-player reach-avoid
-    ReachAvoidPPO, ReachAvoidSAC,
-    # two-player avoid (ISAACS eq. 7)
-    IsaacsPPO, IsaacsSAC,
-    # two-player reach-avoid (Gameplay Filters)
-    GameplayPPO, GameplaySAC,
+    # Mode x Algorithm x Players -- the whole roster
+    SafetyPPO1P, ReachAvoidPPO1P, CumulativePPO1P,
+    SafetyPPO2P, ReachAvoidPPO2P,
+    SafetySAC1P, ReachAvoidSAC1P, CumulativeSAC1P,
+    SafetySAC2P, ReachAvoidSAC2P,
+    SafetyA2C1P, ReachAvoidA2C1P, CumulativeA2C1P,
+    SafetyDQN1P, CumulativeDQN1P,
+    # the abstract algorithms -- extension points for a new Mode or Player count.
+    # The *1P/*2P loops run directly with mode=; the bare bases own no loop.
+    AbstractPPO, AbstractPPO1P, AbstractPPO2P,
+    AbstractSAC, AbstractSAC1P, AbstractSAC2P,
+    AbstractA2C, AbstractDQN,
     # tensor path
     TensorVecEnv, TensorVecNormalize,
+    # buffers -- Mode only, no player count (a buffer cannot tell who filled it)
+    SafetyRolloutBuffer, ReachAvoidRolloutBuffer, CumulativeRolloutBuffer,
     TensorSafetyRolloutBuffer, TensorReachAvoidRolloutBuffer,
-    # buffers / policy / callbacks
-    SafetyRolloutBuffer, ReachAvoidRolloutBuffer,
-    ReachAvoidReplayBuffer, IsaacsPolicy, StdCapCallback,
-    SafeSuccessRateEvalCallback,
-    # discount (gamma) annealing — ON by default in every Safety* learner
+    TensorCumulativeRolloutBuffer, ReachAvoidReplayBuffer,
+    # policy / league / callbacks
+    TwoPlayerSACPolicy, Leaderboard, LeagueEvaluator,
+    StdCapCallback, SafeSuccessRateEvalCallback,
+    # discount (gamma) annealing -- ON by default in every learner
     GammaAnnealMixin, StepGammaAnneal, GeometricGammaAnneal,
     make_default_gamma_schedule,
     # the operators
@@ -226,11 +287,11 @@ reference ISAACS codebase):
 
 ### Two-player learners
 
-`Isaacs*` / `Gameplay*` take a single concatenated action `Box(ctrl_dim + dstb_dim)`
+The `*2P` learners take a single concatenated action `Box(ctrl_dim + dstb_dim)`
 split by `ctrl_action_dim`, and require `ctrl_action_dim` at construction:
 
 ```python
-GameplayPPO("MlpPolicy", env, ctrl_action_dim=12, terminal_type="all")
+ReachAvoidPPO2P("MlpPolicy", env, ctrl_action_dim=12, terminal_type="all")
 ```
 
 `self.policy` is always the **control** policy, so `predict()`, `save()`, and
@@ -249,13 +310,13 @@ horizon cutoff by construction.
 
 ```python
 # single-player reach-avoid, tensor path
-from safety_sb3 import ReachAvoidPPO
-model = ReachAvoidPPO("MlpPolicy", tensor_env, normalize_obs=True,
+from safety_sb3 import ReachAvoidPPO1P
+model = ReachAvoidPPO1P("MlpPolicy", tensor_env, normalize_obs=True,
                       terminal_type="all", n_steps=48, batch_size=24576)
 model.learn(2_000_000_000)
 
 # two-player avoid (ISAACS), numpy path
-from safety_sb3 import IsaacsPPO
-model = IsaacsPPO("MlpPolicy", adv_env, ctrl_action_dim=2)   # no l, no terminal_type
+from safety_sb3 import SafetyPPO2P
+model = SafetyPPO2P("MlpPolicy", adv_env, ctrl_action_dim=2)   # no l, no terminal_type
 model.learn(5_000_000)
 ```

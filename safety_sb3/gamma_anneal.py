@@ -26,13 +26,13 @@ TWO SCHEDULERS (both provided; ``StepGammaAnneal`` is the DEFAULT)
   so each jump triggers an ENTROPY-TEMPERATURE (alpha) RESET in the SAC learners
   (the Q-scale shifts discontinuously at a jump, so the tuned alpha is stale —
   the reference resets both actors' alpha on every gamma jump; see
-  ``GammaAnnealMixin._on_gamma_jump`` / ``SafetySAC``).
+  ``GammaAnnealMixin._on_gamma_jump`` / the SAC family).
 
 * :class:`GeometricGammaAnneal` — a smooth (continuous) log-space interpolation
   reaching ``end`` at ``anneal_frac`` then holding.  No discontinuity, so no
   alpha reset.  Available via ``gamma_anneal=GeometricGammaAnneal(...)``.
 
-ON by default in every Safety* algorithm; ``gamma_anneal=False`` disables it, a
+ON by default in every learner; ``gamma_anneal=False`` disables it, a
 callable ``frac -> gamma`` (optionally exposing ``.is_stepwise``) is a custom
 schedule.  All knobs (start/end/ratio/period/anneal fraction) are constructor
 arguments.  Gamma is logged as ``train/gamma`` (+ ``train/gamma_jump`` on a step).
@@ -148,15 +148,15 @@ def make_default_gamma_schedule(init: float = 0.99) -> StepGammaAnneal:
 
 
 class GammaAnnealMixin:
-    """Mix-in that anneals ``self.gamma`` over training for every Safety* algo.
+    """Mix-in that anneals ``self.gamma`` over training for every learner.
 
     Wiring:
 
     * ``_update_current_progress_remaining`` re-applies the schedule each
       iteration -- covers every NUMPY / on-policy path (SB3 calls it in both
       learn loops).
-    * The GPU-resident collect loops bypass that call, so ``SafetyPPO`` /
-      ``SafetySAC`` / the two-player variants also call ``_apply_gamma_anneal()``
+    * The GPU-resident collect loops bypass that call, so the PPO and SAC
+      families (1P and 2P alike) also call ``_apply_gamma_anneal()``
       at the top of their ``collect_rollouts``.  ``_apply`` is idempotent.
 
     Gamma is applied at *consumption* time: ``rollout_buffer.gamma`` for PPO GAE,

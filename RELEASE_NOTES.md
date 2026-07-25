@@ -1,20 +1,163 @@
 # Release notes
 
-## Unreleased — abstract-DP refactor (behavior-preserving)
+## v0.4.0 — the MAP rename (BREAKING, no shims)
 
-No public class was renamed or removed and no default changed. The learners
-reproduce v0.3.0 bit-for-bit, except `SafetyDQN` (~1e-6 relative, pure float
-reassociation) and `ReachAvoidSAC` when `min_alpha`/`max_alpha` are set away
-from their defaults (bug fix) — both below.
+**Every public learner is renamed.** This release is a migration guide.
 
-- **Every learner now takes its backup as a parameter.** `AbstractSAC` holds the
+There are **no aliases, no deprecation warnings, and no compatibility shims**. Old
+code will fail at import with a plain `ImportError`, which is deliberate: the
+previous rename (v0.2.0) changed what `Isaacs*` *meant* while keeping the name, so
+existing code kept importing and silently trained a different algorithm. A hard
+break cannot do that.
+
+**If you need the old names, pin v0.3.x:**
+
+```
+safety_sb3 @ git+https://github.com/SafeRoboticsLab/safety-stable-baselines.git@v0.3.0
+```
+
+### Why
+
+Class names encoded paper lineage (`IsaacsPPO`, `GameplaySAC`), so using the library
+required knowing which paper introduced which game — and, after v0.2.0, which
+*version* of which name meant which game. Names now encode the algorithm instead:
+
+> **Here's a MAP to navigate the codebase — Mode. Algorithm. Players.**
+
+```
+M = Mode       Safety | ReachAvoid | Cumulative    (which Bellman operator)
+A = Algorithm  PPO | SAC | A2C | DQN               (which RL method)
+P = Players    1P | 2P                             (single | zero-sum game)
+```
+
+`SafetyPPO1P`, `ReachAvoidSAC2P`, `CumulativePPO1P` — read the name, know the
+algorithm. The papers are still cited in the docstrings; you just no longer need
+them to pick a class.
+
+### 1. Rename table
+
+| v0.3.x | v0.4.0 |
+|---|---|
+| `SafetyPPO` | `SafetyPPO1P` |
+| `ReachAvoidPPO` | `ReachAvoidPPO1P` |
+| `IsaacsPPO` | **`SafetyPPO2P`** (two-player avoid) |
+| `GameplayPPO` | **`ReachAvoidPPO2P`** |
+| `SafetySAC` | `SafetySAC1P` |
+| `ReachAvoidSAC` | `ReachAvoidSAC1P` |
+| `IsaacsSAC` | **`SafetySAC2P`** (two-player avoid) |
+| `GameplaySAC` | **`ReachAvoidSAC2P`** |
+| `SafetyA2C` | `SafetyA2C1P` |
+| `SafetyDQN` | `SafetyDQN1P` |
+| `IsaacsPolicy` | **`TwoPlayerSACPolicy`** (now in `safety_sb3.policies`) |
+
+Buffers keep a **Mode prefix and no player count** — `SafetyRolloutBuffer`,
+`ReachAvoidRolloutBuffer`, and the `Tensor*` twins are unchanged names. A buffer
+cannot tell how many players filled it, and the two-player learners build two
+instances of the very same class.
+
+Module files were renamed to match; every `isaacs_*` file is gone:
+
+| v0.3.x | v0.4.0 |
+|---|---|
+| `safety_ppo.py` | `ppo_base.py` + `ppo_1p.py` |
+| `isaacs_ppo.py` | `ppo_2p.py` |
+| `reach_avoid_ppo.py` | `reach_avoid_mixin.py` |
+| `safety_sac.py`, `reach_avoid_sac.py` | `sac_1p.py` |
+| `isaacs.py` | `sac_2p.py` |
+| `safety_a2c.py` / `safety_dqn.py` | `a2c.py` / `dqn.py` |
+| `safety_buffers.py` | `buffers_rollout.py` |
+| `tensor_buffers.py` | `buffers_tensor.py` |
+| `isaacs_buffers.py` | `buffers_replay.py` |
+| `isaacs_policy.py` | `policies.py` |
+
+### 2. New classes (the naming law implies them)
+
+- **`CumulativePPO1P`, `CumulativeSAC1P`, `CumulativeA2C1P`, `CumulativeDQN1P`** —
+  ordinary reward-maximizing RL as a first-class Mode, so a nominal baseline runs
+  through every line of the same code as the safety learners. Not safety learners:
+  the reward is a reward, and `V ≥ 0` means nothing.
+- **`ReachAvoidA2C1P`** — new, and free: the Mode axis costs one line.
+- **`AbstractPPO1P` / `AbstractPPO2P` / `AbstractSAC1P` / `AbstractSAC2P` /
+  `AbstractA2C` / `AbstractDQN`** — the extension points. The `*1P`/`*2P` loops run
+  directly with `mode=`.
+- **`LeagueEvaluator`** (in `safety_sb3.leaderboard`) — the two-player league's
+  scorer, lifted out of the SAC learner so all league machinery lives in one module.
+
+**`ReachAvoidDQN1P` does not exist and will not.** SB3's discrete-action replay
+buffer carries no target margin `l(s)`, so the reach-avoid operator is not computable
+there. `mode="reach-avoid"` raises at construction rather than computing something
+else. Use `ReachAvoidSAC1P`, or add an `l`-carrying discrete replay buffer.
+
+### 3. Removed
+
+- **All compatibility surface.** The v0.2.0 rename warning in `__init__.py` and every
+  "before v0.2.0…" note are gone. v0.2.0 is far enough back that the archaeology cost
+  more than it explained; `git log` has it.
+- **`_is_reach_avoid`.** It existed only so avoid-mode subclasses could inherit
+  reach-avoid machinery and switch it off. Under the new tree the avoid learners never
+  receive that machinery — reach-avoid is a **mixin** (`_ReachAvoidPlumbing`) composed
+  onto both player counts, not a base class — so the predicate became unreachable.
+  Deleting it is a correctness win, not tidiness: previously *every* `l`-touching line
+  needed a guard, and a single missed guard fed a target margin to an avoid learner.
+- **`numpy_rollout_buffer_class` / `tensor_rollout_buffer_class` class attributes.**
+  Buffers are now looked up from `_MODE` via
+  `buffers_rollout.rollout_buffer_classes(mode)`, so a buffer can no longer disagree
+  with the mode its owner declares. Pass `rollout_buffer_class=` to override.
+
+### 4. Behavioral changes
+
+The refactor is otherwise behavior-preserving: seeded loss and parameter traces for
+**all ten learners** (4 PPO, 4 SAC, A2C, DQN) on the toy envs reproduce v0.3.x
+**bitwise**, including the two-player league operation traces. Three intentional
+exceptions:
+
+- **Both two-player rollout buffers now get the same kwargs.** `terminal_type` reached
+  the ctrl buffer but not the dstb buffer, so with a non-default `terminal_type` the
+  two players scored terminal states differently. No effect at the default (`"all"`).
+- **Two-player log keys `isaacs/*` → `game/*`** (`game/phase_is_dstb`,
+  `game/rollouts_done`, `game/archived_dstb`, `game/lr_ctrl`, `game/lr_dstb`). Update
+  any dashboard that plots them.
+- **Default league directories renamed** — `isaacs_ppo_leaderboard` →
+  `ppo_2p_leaderboard`, `isaacs_leaderboard` → `sac_2p_leaderboard`. Pass
+  `leaderboard_dir=` to keep an existing archive path.
+
+Also, `AbstractPPO` and `AbstractSAC` now **refuse to run** instead of inheriting
+SB3's stock loop. Instantiating a bare base previously would have converged to the
+cumulative fixed point while `_MODE` claimed a safety operator.
+
+### 5. Migrating
+
+A mechanical rename covers almost all call sites:
+
+```bash
+sed -i -E 's/\bIsaacsPPO\b/SafetyPPO2P/g;   s/\bGameplayPPO\b/ReachAvoidPPO2P/g;
+           s/\bIsaacsSAC\b/SafetySAC2P/g;   s/\bGameplaySAC\b/ReachAvoidSAC2P/g;
+           s/\bReachAvoidPPO\b/ReachAvoidPPO1P/g; s/\bReachAvoidSAC\b/ReachAvoidSAC1P/g;
+           s/\bSafetyPPO\b/SafetyPPO1P/g;   s/\bSafetySAC\b/SafetySAC1P/g;
+           s/\bSafetyA2C\b/SafetyA2C1P/g;   s/\bSafetyDQN\b/SafetyDQN1P/g;
+           s/\bIsaacsPolicy\b/TwoPlayerSACPolicy/g' $(git ls-files '*.py')
+```
+
+Apply the two-player substitutions **before** the single-player ones (`SafetySAC2P`
+contains `SafetySAC`). Saved checkpoints (`.zip`) store the class path, so a model
+trained on v0.3.x will not load on v0.4.0 — pin v0.3.x to load it, or retrain.
+
+### 6. Also in v0.4.0 — the abstract-DP refactor
+
+This landed on the same branch and ships here. It is behavior-preserving on its own:
+no default changed, and the learners reproduce v0.3.0 bit-for-bit except `SafetyDQN1P`
+(~1e-6 relative, pure float reassociation) and `ReachAvoidSAC1P` when
+`min_alpha`/`max_alpha` are set away from their defaults (a bug fix) — both below.
+Class names below are the v0.4.0 ones.
+
+- **Every learner now takes its backup as a parameter.** `AbstractSAC1P` holds the
   single-player SAC update loop and calls `backups.target(self._MODE, …)`;
-  `SafetySAC` and `ReachAvoidSAC` are one-line `_MODE` specializations of it
-  (previously `ReachAvoidSAC.train()` was a hand-copy of `SafetySAC.train()`).
-  The mode is also selectable per instance: `Cls(…, mode="reach-avoid")`. The
-  two-player classes keep their own `train()` (twin actors, per-actor entropy)
-  and share only the backup, as before.
-- **Bug fix — `min_alpha`/`max_alpha` now apply to `ReachAvoidSAC`.** The copied
+  `SafetySAC1P`, `ReachAvoidSAC1P` and `CumulativeSAC1P` are one-line `_MODE`
+  specializations of it (previously `ReachAvoidSAC.train()` was a hand-copy of
+  `SafetySAC.train()`). The mode is also selectable per instance:
+  `Cls(…, mode="reach-avoid")`. The two-player learners keep their own `train()`
+  (twin actors, per-actor entropy) and share only the backup.
+- **Bug fix — `min_alpha`/`max_alpha` now apply to `ReachAvoidSAC1P`.** The copied
   `train()` had dropped the `_clamp_entropy_temps()` call, so the entropy-
   temperature floor/ceiling silently did nothing on the single-player
   reach-avoid path (measured: α = 0.763 after 1500 steps with `min_alpha=0.9`).
@@ -24,11 +167,12 @@ from their defaults (bug fix) — both below.
 - **New mode `backups.CUMULATIVE`** — the standard discounted-return backup
   `r + γ·V'`. Plain reward-maximizing RL is now a mode of this library, so a
   nominal baseline runs through the same actor/critic/entropy code as the safety
-  learners: `AbstractSAC(…, mode="cumulative")`, `SafetyDQN(…,
-  mode="cumulative")`, and `SafetyRolloutBuffer(…, mode="cumulative")` ≡ SB3's
-  GAE. It is **not** a safety operator: its first argument is a reward and
-  `V ≥ 0` carries no certificate meaning.
-- **`SafetyDQN` no longer inlines its own backup.** It computed
+  learners. v0.4.0 gives it first-class classes (`CumulativeSAC1P`,
+  `CumulativePPO1P`, `CumulativeA2C1P`, `CumulativeDQN1P`); `mode="cumulative"`
+  also still works on any learner, and `CumulativeRolloutBuffer` ≡ SB3's GAE. It is
+  **not** a safety operator: its first argument is a reward and `V ≥ 0` carries no
+  certificate meaning.
+- **`SafetyDQN1P` no longer inlines its own backup.** It computed
   `(1 − γ·nt)·g + γ·nt·min(g, V')` by hand; that is the same expression as
   `backups.avoid_target`, which it now calls. Reassociating the terms changes
   float rounding, so long DQN runs drift ~1e-6 relative from v0.3.0.

@@ -83,14 +83,15 @@ the per-step reward is net-negative.
 
 ## 4. Reach-avoid specifics
 
-**Pick the cell, don't bend the margins.** The learners are a 2×2 over
-{avoid, reach-avoid} × {single, two-player} — see the README table. Avoid is
+**Pick the Mode, don't bend the margins.** Class names are Mode + Algorithm +
+Players (`SafetyPPO1P`, `ReachAvoidSAC2P` — see the README's MAP table), so choosing
+the problem is choosing the Mode prefix and nothing else. Avoid is
 **not** a reach-avoid instance with a degenerate `l`: the reduction needs
 `l ≥ g` (for the anchor) *and* `l ≤ V'` (for the recursion), and `V' ≤ g`, so it
 demands `l ≥ g ≥ V' ≥ l`. A large negative `l` gives `V ≡ l` — an empty safe set
 with healthy-looking metrics. A zero/positive `l` gives `V ≡ g` — no lookahead at
 all, since `max(l, ·)` clips every negative future. **If your `l` exists only to
-be ignored, you have an avoid task: use `SafetyPPO` or `IsaacsPPO`.**
+be ignored, you have an avoid task: use `SafetyPPO1P` or `SafetyPPO2P`.**
 
 **The reach-avoid anchor is `min(l, g)`, not `g`.** The `(1 − γ)` anchor is the
 "terminate now" payoff, and reach-avoid scores that well only if you are in the
@@ -117,7 +118,7 @@ finds them.
 The avoid gradient is near-zero on all safe episodes and sharp only at failures, so
 it barely moves a competent policy except exactly where it dies — converting doomed
 attempts into stopping while preserving successful ones. If your goal is "keep the
-task, remove the deaths," try `SafetyPPO` fine-tuning before anything fancier.
+task, remove the deaths," try `SafetyPPO1P` fine-tuning before anything fancier.
 
 ## 5. Filters (deployment)
 

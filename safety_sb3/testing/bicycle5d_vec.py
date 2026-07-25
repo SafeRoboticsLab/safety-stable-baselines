@@ -7,7 +7,7 @@ does tens of thousands of env-steps/s on CPU with no GPU and no processes.
 
 Same physics, margins, obs, and contract as :class:`BicycleGoal` (numpy-parity
 checked in tests) — this is the fast trainer for the same task, exposed as a
-Stable-Baselines3 ``VecEnv`` so ReachAvoidPPO/SafetyPPO consume it directly.
+Stable-Baselines3 ``VecEnv`` so ReachAvoidPPO1P/SafetyPPO1P consume it directly.
 """
 from __future__ import annotations
 
