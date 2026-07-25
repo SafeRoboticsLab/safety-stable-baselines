@@ -1,3 +1,23 @@
+"""DQN, written without a fixed Bellman backup.
+
+    AbstractDQN
+    ├─ SafetyDQN1P        _MODE = AVOID
+    └─ CumulativeDQN1P    _MODE = CUMULATIVE
+
+**There is deliberately no ReachAvoidDQN1P.** MAP would predict one, and it is
+the single place in the taxonomy where the product does not close: SB3's
+discrete-action ``ReplayBuffer`` carries no target margin ``l(s)``, and the
+reach-avoid operator cannot be evaluated without it. That is a missing
+capability, not a naming gap, so :class:`AbstractDQN` refuses
+``mode='reach-avoid'`` loudly at construction rather than silently computing
+something else. Use :class:`~safety_sb3.sac_1p.ReachAvoidSAC1P` (continuous
+actions) or add an ``l``-carrying discrete replay buffer.
+
+DQN is also single-player only — a two-player discrete game would need a joint
+action-value table over both players' actions, which is a different learner.
+"""
+from __future__ import annotations
+
 import numpy as np
 import torch as th
 import torch.nn.functional as F
@@ -8,14 +28,9 @@ from . import backups
 from .gamma_anneal import GammaAnnealMixin
 
 
-class SafetyDQN(GammaAnnealMixin, DQN):
-    """Safety DQN.
-
-    The TD target is the backup for ``self._MODE``, dispatched through
-    :mod:`safety_sb3.backups` like every other learner in the library:
-    ``AVOID`` (the default, Fisac et al. 2019) or ``CUMULATIVE`` (vanilla DQN).
-    ``REACH_AVOID`` is not available here -- SB3's discrete-action
-    ``ReplayBuffer`` carries no target margin ``l(s)``.
+class AbstractDQN(GammaAnnealMixin, DQN):
+    """DQN whose TD target is the backup for ``self._MODE``, dispatched through
+    :mod:`safety_sb3.backups` like every other learner in the library.
 
     ``gamma_anneal`` (ON by default) anneals the discount 0.99 -> 0.9999 over the
     first 50% of training (read as ``self.gamma`` in the TD target of
@@ -32,8 +47,10 @@ class SafetyDQN(GammaAnnealMixin, DQN):
         self._MODE = backups.check_mode(self._MODE if mode is None else mode)
         if self._MODE == backups.REACH_AVOID:
             raise ValueError(
-                "SafetyDQN cannot run mode='reach-avoid': its replay buffer "
-                "stores no target margin l(s). Use ReachAvoidSAC.")
+                f"{type(self).__name__} cannot run mode='reach-avoid': its "
+                "replay buffer stores no target margin l(s), so the reach-avoid "
+                "operator is not computable here. Use ReachAvoidSAC1P, or add an "
+                "l-carrying discrete replay buffer.")
         super().__init__(*args, **kwargs)
         self._setup_gamma_anneal(gamma_anneal)
 
@@ -94,3 +111,19 @@ class SafetyDQN(GammaAnnealMixin, DQN):
 
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/loss", np.mean(losses))
+
+
+# ----------------------------------------------------------------- the modes
+
+class SafetyDQN1P(AbstractDQN):
+    """DQN with the **avoid** backup — ``Q(s,a) = (1-γ)·g + γ·min(g, max_a' Q')``
+    (Fisac et al. 2019). ``g(s)`` rides on the reward channel."""
+
+    _MODE = backups.AVOID
+
+
+class CumulativeDQN1P(AbstractDQN):
+    """Ordinary DQN — ``Q(s,a) = r + γ·max_a' Q'``. Not a safety learner; it is
+    here so a reward-maximizing discrete baseline shares this library's code."""
+
+    _MODE = backups.CUMULATIVE

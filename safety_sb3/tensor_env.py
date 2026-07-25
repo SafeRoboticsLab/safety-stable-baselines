@@ -66,7 +66,7 @@ class TensorVecEnv(VecEnv):
   def step_async(self, actions):
     raise RuntimeError(
       "TensorVecEnv has no numpy step API — pair it with a safety_sb3 "
-      "algorithm (SafetyPPO/ReachAvoidPPO detect is_tensor_env)."
+      "algorithm (the learners detect is_tensor_env)."
     )
 
   def step_wait(self):

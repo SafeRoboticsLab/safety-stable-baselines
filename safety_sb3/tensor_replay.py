@@ -4,7 +4,7 @@ The numpy SAC path pays a device->host bounce per step plus host->device
 sampling transfers per gradient step. This buffer keeps the whole replay on
 device: `add_batch` writes one vectorized transition (num_envs rows) per env
 step; `sample` gathers uniformly on device and returns the SAME named tuples
-the numpy buffers return — so `SafetySAC.train` / `ReachAvoidSAC.train` run
+the numpy buffers return — so the SAC-family `train()` runs
 UNCHANGED on top of it.
 
 Semantics mirrored from the numpy path exactly:
@@ -33,7 +33,7 @@ from __future__ import annotations
 import torch as th
 from stable_baselines3.common.buffers import ReplayBufferSamples
 
-from safety_sb3.isaacs_buffers import ReachAvoidReplayBufferSamples
+from safety_sb3.buffers_replay import ReachAvoidReplayBufferSamples
 
 
 class TensorReplayBuffer:

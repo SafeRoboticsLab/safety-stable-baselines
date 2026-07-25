@@ -1,13 +1,22 @@
-"""The single-player SAC learner, written without a fixed Bellman backup.
+"""SAC, written without a fixed Bellman backup — the shared half of the family.
 
-:class:`AbstractSAC` is SAC's update loop and nothing else: it samples, fits the
-entropy temperature, forms the soft next-state value ``V'``, and hands ``V'`` to
-:func:`safety_sb3.backups.target` together with ``self._MODE``. Which value
-function it converges to is therefore a *parameter*, not a class:
+:class:`AbstractSAC` is everything the SAC-family learners share regardless of
+how many players are in the game: the constructor and mode check, replay-buffer
+selection and validation, the entropy-temperature bounds / reset, gamma
+annealing, the GPU-resident collection loop, and the TD target itself. It
+deliberately owns **no** ``train()`` — that is the axis its subclasses split on:
 
-    ``_MODE = backups.AVOID``        -> :class:`~safety_sb3.safety_sac.SafetySAC`
-    ``_MODE = backups.REACH_AVOID``  -> :class:`~safety_sb3.reach_avoid_sac.ReachAvoidSAC`
-    ``_MODE = backups.CUMULATIVE``   -> ordinary reward-maximizing SAC
+    :class:`~safety_sb3.sac_1p.AbstractSAC1P` — one actor, one entropy temp.
+    :class:`~safety_sb3.sac_2p.AbstractSAC2P` — two actors over disjoint action
+        sub-spaces, two entropy temps, ONE twin critic over the joint action.
+
+Which value function a learner converges to is a *parameter*, not a class: the
+update loops form the soft next-state value ``V'`` and hand it to
+:func:`safety_sb3.backups.target` together with ``self._MODE``.
+
+    ``_MODE = backups.AVOID``        -> SafetySAC1P / SafetySAC2P
+    ``_MODE = backups.REACH_AVOID``  -> ReachAvoidSAC1P / ReachAvoidSAC2P
+    ``_MODE = backups.CUMULATIVE``   -> CumulativeSAC1P (ordinary SAC)
 
 Each of those is a one-line specialization; the mode is also selectable per
 instance via the ``mode=`` constructor argument. This follows Bertsekas's
@@ -16,30 +25,30 @@ choose the operator) and it is why the reach-avoid learner cannot drift from the
 avoid learner again: before this class they were two hand-copied ``train()``
 bodies, and the copy had already lost the ``min_alpha``/``max_alpha`` clamp.
 
-The TWO-player learners are deliberately NOT built on this class — their
-``train()`` alternates two actors with two entropy temperatures (see
-:mod:`safety_sb3.isaacs`). They share the *backup* with this class, via the same
-``backups.target(self._MODE, ...)`` dispatch, not the update loop.
+Note that SAC needs no reach-avoid mixin, unlike the on-policy family: its whole
+mode delta is the buffer choice and the ``l``-carrying flag below, both of which
+already dispatch on ``_MODE`` right here.
 """
 from __future__ import annotations
 
 import numpy as np
 import torch as th
-import torch.nn.functional as F
 
 from stable_baselines3.common.type_aliases import RolloutReturn, TrainFreq
-from stable_baselines3.common.utils import polyak_update, should_collect_more_steps
+from stable_baselines3.common.utils import should_collect_more_steps
 from stable_baselines3.sac.sac import SAC
 
 from . import backups
+from .buffers_replay import ReachAvoidReplayBuffer
+from .env_checks import guard_and_normalize_env
 from .gamma_anneal import GammaAnnealMixin
 
 
 class AbstractSAC(GammaAnnealMixin, SAC):
   """SAC whose Bellman backup is chosen by ``_MODE`` (see the module docstring).
 
-  We subclass SB3's SAC to reuse the actor, entropy regularization, replay
-  buffer, etc.
+  Subclasses SB3's SAC to reuse the actor, entropy regularization, replay
+  buffer, etc. Abstract: it has no ``train()``.
 
   GPU-resident path: pass a ``TensorVecEnv`` (detected via ``is_tensor_env``,
   optionally auto-wrapped in ``TensorVecNormalize`` with ``normalize_obs=True``)
@@ -65,21 +74,19 @@ class AbstractSAC(GammaAnnealMixin, SAC):
                normalize_obs: bool = False, gamma_anneal=True,
                min_alpha: float | None = 1e-3, max_alpha: float | None = None,
                **kwargs):
-    from .safety_ppo import _guard_and_normalize_env
     # The mode must be known before super().__init__ -> _setup_model, which
     # picks the buffer (an l-carrying one for reach-avoid).
     self._MODE = backups.check_mode(self._MODE if mode is None else mode)
     self.terminal_type = backups.check_terminal_type(terminal_type)
     if self._MODE == backups.REACH_AVOID:
-      from .isaacs_buffers import ReachAvoidReplayBuffer
       if replay_buffer_class is None:
         replay_buffer_class = ReachAvoidReplayBuffer
       self._tensor_store_l = True  # tensor buffer stores l(s)
     if "env" in kwargs:
-      kwargs["env"] = _guard_and_normalize_env(kwargs["env"], normalize_obs)
+      kwargs["env"] = guard_and_normalize_env(kwargs["env"], normalize_obs)
     elif len(args) >= 2:
       args = list(args)
-      args[1] = _guard_and_normalize_env(args[1], normalize_obs)
+      args[1] = guard_and_normalize_env(args[1], normalize_obs)
     _env = kwargs.get("env", args[1] if len(args) >= 2 else None)
     self._tensor_path = bool(getattr(_env, "is_tensor_env", False))
     # Entropy-temperature (alpha) FLOOR/ceiling (reference: min_alpha=1e-3).
@@ -105,7 +112,6 @@ class AbstractSAC(GammaAnnealMixin, SAC):
     """
     if self._MODE != backups.REACH_AVOID or self._tensor_path:
       return
-    from .isaacs_buffers import ReachAvoidReplayBuffer
     if self.replay_buffer is not None and not isinstance(
         self.replay_buffer, ReachAvoidReplayBuffer):
       raise TypeError(
@@ -161,7 +167,7 @@ class AbstractSAC(GammaAnnealMixin, SAC):
   def _entropy_optimizer_lr(self) -> float:
     """LR for the (ctrl) entropy-coefficient optimizer. Falls back to the
     shared ``learning_rate`` when no dedicated ``ent_coef_lr`` was set
-    (GameplaySAC/IsaacsSAC set ``self._ent_coef_lr``); keeps a rebuilt
+    (the two-player learners set ``self._ent_coef_lr``); keeps a rebuilt
     optimizer on the configured entropy lr rather than the shared one."""
     lr = getattr(self, "_ent_coef_lr", None)
     return float(self.lr_schedule(1)) if lr is None else float(lr)
@@ -208,10 +214,10 @@ class AbstractSAC(GammaAnnealMixin, SAC):
     """Post-warmup policy actions for the tensor collect: on device, in the
     env's action range, shape ``(num_envs, action_dim)``.
 
-    Single-player: the ctrl actor. Two-player games (GameplaySAC / IsaacsSAC)
-    override this to sample BOTH players and concatenate ``[a_ctrl, a_dstb]``
-    so the composed action matches the env's ``ctrl_dim + dstb_dim`` action
-    space (the numpy-path analog is :meth:`GameplaySAC._sample_action`).
+    Single-player: the ctrl actor. The two-player learners override this to
+    sample BOTH players and concatenate ``[a_ctrl, a_dstb]`` so the composed
+    action matches the env's ``ctrl_dim + dstb_dim`` action space (the
+    numpy-path analog is :meth:`~safety_sb3.sac_2p.AbstractSAC2P._sample_action`).
     """
     with th.no_grad():
       return self.actor(obs, deterministic=False)
@@ -295,6 +301,20 @@ class AbstractSAC(GammaAnnealMixin, SAC):
     return RolloutReturn(num_collected_steps * env.num_envs,
                          num_collected_episodes, continue_training)
 
+  def train(self, gradient_steps: int, batch_size: int) -> None:
+    """Refuse to fall through to SB3's ``SAC.train``.
+
+    This class has no update loop by design — that is the Players axis. Without
+    this guard, instantiating it directly would inherit stock SAC's train() and
+    silently converge to the CUMULATIVE fixed point while ``_MODE`` claimed
+    otherwise: exactly the "different fixed points under one name" bug the
+    library exists to prevent.
+    """
+    raise NotImplementedError(
+      f"{type(self).__name__} has no update loop. Use a concrete learner "
+      "(SafetySAC1P, ReachAvoidSAC2P, ...), or AbstractSAC1P / AbstractSAC2P "
+      "with mode= if you want the loop without a named mode.")
+
   def _bellman_target(self, replay_data, v_next: "th.Tensor") -> "th.Tensor":
     """The backup for THIS instance's mode -- see :mod:`safety_sb3.backups`.
 
@@ -306,112 +326,3 @@ class AbstractSAC(GammaAnnealMixin, SAC):
       self._MODE, replay_data.rewards, v_next, 1.0 - replay_data.dones,
       self.gamma, l=getattr(replay_data, "l_x", None),
       terminal_type=self.terminal_type)
-
-  def train(self, gradient_steps: int, batch_size: int) -> None:
-    """Largely follows the original SAC train method from stable_baselines3.
-    The TD target is the one for ``self._MODE`` (:meth:`_bellman_target`).
-    """
-    # Switch to train mode (this affects batch norm / dropout)
-    self.policy.set_training_mode(True)
-    # Update optimizers learning rate
-    optimizers = [self.actor.optimizer, self.critic.optimizer]
-    if self.ent_coef_optimizer is not None:
-      optimizers += [self.ent_coef_optimizer]
-
-    # Update learning rate according to lr schedule
-    self._update_learning_rate(optimizers)
-
-    ent_coef_losses, ent_coefs = [], []
-    actor_losses, critic_losses = [], []
-
-    for gradient_step in range(gradient_steps):
-      # Sample replay buffer
-      replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)
-
-      # We need to sample because `log_std` may have changed between two gradient steps
-      if self.use_sde:
-        self.actor.reset_noise()
-
-      # Action by the current actor for the sampled state
-      actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations)
-      log_prob = log_prob.reshape(-1, 1)
-
-      ent_coef_loss = None
-      if self.ent_coef_optimizer is not None and self.log_ent_coef is not None:
-        # Important: detach the variable from the graph
-        # so we don't change it with other losses
-        # see https://github.com/rail-berkeley/softlearning/issues/60
-        ent_coef = th.exp(self.log_ent_coef.detach())
-        ent_coef_loss = -(self.log_ent_coef *
-                          (log_prob + self.target_entropy).detach()).mean()
-        ent_coef_losses.append(ent_coef_loss.item())
-      else:
-        ent_coef = self.ent_coef_tensor
-
-      ent_coefs.append(ent_coef.item())
-
-      # Optimize entropy coefficient
-      if ent_coef_loss is not None and self.ent_coef_optimizer is not None:
-        self.ent_coef_optimizer.zero_grad()
-        ent_coef_loss.backward()
-        self.ent_coef_optimizer.step()
-        self._clamp_entropy_temps()  # min_alpha/max_alpha floor/ceiling
-
-      with th.no_grad():
-        # Select action according to policy
-        next_actions, next_log_prob = self.actor.action_log_prob(
-          replay_data.next_observations
-        )
-        # Compute the next Q values: min over all critics targets
-        next_q_values = th.cat(
-          self.critic_target(replay_data.next_observations, next_actions), dim=1
-        )
-        next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-        # add entropy term
-        next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
-
-        target_q_values = self._bellman_target(replay_data, next_q_values)
-
-      # Get current Q-values estimates for each critic network
-      # using action from the replay buffer
-      current_q_values = self.critic(replay_data.observations, replay_data.actions)
-
-      # Compute critic loss
-      critic_loss = 0.5 * sum(
-        F.mse_loss(current_q, target_q_values) for current_q in current_q_values
-      )
-      assert isinstance(critic_loss, th.Tensor)  # for type checker
-      critic_losses.append(critic_loss.item())  # type: ignore[union-attr]
-
-      # Optimize the critic
-      self.critic.optimizer.zero_grad()
-      critic_loss.backward()
-      self.critic.optimizer.step()
-
-      # Compute actor loss -- the actor MAXIMIZES the value of self._MODE.
-      # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
-      # Min over all critic networks
-      q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
-      min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
-      actor_loss = (ent_coef*log_prob - min_qf_pi).mean()
-      actor_losses.append(actor_loss.item())
-
-      # Optimize the actor
-      self.actor.optimizer.zero_grad()
-      actor_loss.backward()
-      self.actor.optimizer.step()
-
-      # Update target networks
-      if gradient_step % self.target_update_interval == 0:
-        polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
-        # Copy running stats, see GH issue #996
-        polyak_update(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
-
-    self._n_updates += gradient_steps
-
-    self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
-    self.logger.record("train/ent_coef", np.mean(ent_coefs))
-    self.logger.record("train/actor_loss", np.mean(actor_losses))
-    self.logger.record("train/critic_loss", np.mean(critic_losses))
-    if len(ent_coef_losses) > 0:
-      self.logger.record("train/ent_coef_loss", np.mean(ent_coef_losses))

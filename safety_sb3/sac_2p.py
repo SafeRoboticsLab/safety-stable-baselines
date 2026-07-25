@@ -1,19 +1,15 @@
-"""Two-player (adversarial) safety RL on SB3 — the SAC family.
+"""Two-player (adversarial) SAC — the **2P** half of the SAC family.
+
+    AbstractSAC                 (sac_base.py)
+    └─ AbstractSAC2P            two actors, two entropy temps, ONE joint critic
+        ├─ SafetySAC2P          _MODE = AVOID          (ISAACS proper)
+        └─ ReachAvoidSAC2P      _MODE = REACH_AVOID    (Gameplay Filters)
 
 Control actor (max-player) and disturbance actor (min-player) share one twin
-critic over the full concatenated action ``Q(s, [a_ctrl, a_dstb])``.  Each actor
+critic over the full concatenated action ``Q(s, [a_ctrl, a_dstb])``. Each actor
 has its own entropy coefficient / target entropy (ctrl: ``-ctrl_dim``, dstb:
-``-dstb_dim``).  Uses :class:`IsaacsPolicy` (two sub-space actors + full critic)
-and the :class:`ReachAvoidReplayBuffer` (stores ``l(s)``).
-
-Two classes, one per problem — the machinery is shared, only the backup differs
-(see :mod:`safety_sb3.backups`):
-
-* :class:`IsaacsSAC`  — two-player **avoid** game.  ISAACS proper
-  (Hsu et al. 2022, eq. 7): no target set, anchor ``g``.
-* :class:`GameplaySAC` — two-player **reach-avoid** game.  Gameplay Filters
-  (Hsu et al. 2024, eq. 6a), which extends ISAACS to reach-avoid: anchor
-  ``min(l, g)``.
+``-dstb_dim``). Uses :class:`~safety_sb3.policies.TwoPlayerSACPolicy` (two
+sub-space actors + one full critic).
 
 Soft max-min value used in the critic target::
 
@@ -21,13 +17,18 @@ Soft max-min value used in the critic target::
     y   = backups.target(mode, g, V', ...)       (avoid | reach-avoid)
 
 (The ctrl entropy raises the value as a max-player bonus; the dstb entropy raises
-the min as a min-player softening — same convention as the base ``SafetySAC``
-adding ctrl entropy to ``next_q``; see the README TODO on this choice.)
+the min as a min-player softening — same convention as the single-player learner
+adding ctrl entropy to ``next_q``.)
 
-.. warning::
-   Before v0.2.0 ``IsaacsSAC`` was the *reach-avoid* game (now
-   :class:`GameplaySAC`) and there was no two-player avoid class. See
-   RELEASE_NOTES.md.
+**This is the minimax game as ISAACS formulates it**, and it is NOT the same
+object as :mod:`safety_sb3.ppo_2p` even though both hold two actors. Because
+SAC's critic takes the action, this one ``Q`` *is* the game value and both actors
+differentiate through it; nothing needs scheduling, and replay makes the learner
+indifferent to whose policy produced the data. The on-policy two-player learner
+has two state-only ``V(s)`` nets, two rollout buffers and a phase machine, and is
+an alternating best-response approximation. See :mod:`safety_sb3.ppo_2p` for the
+full comparison and for why there is deliberately no shared
+``AbstractTwoPlayer`` base.
 """
 
 from __future__ import annotations
@@ -39,21 +40,17 @@ import torch as th
 import torch.nn.functional as F
 from stable_baselines3.common.utils import polyak_update, update_learning_rate
 
-from safety_sb3 import backups
-from safety_sb3.isaacs_policy import IsaacsPolicy
-from safety_sb3.leaderboard import Leaderboard
-from safety_sb3.reach_avoid_sac import ReachAvoidSAC
+from . import backups
+from .leaderboard import Leaderboard, LeagueEvaluator
+from .policies import TwoPlayerSACPolicy
+from .sac_base import AbstractSAC
 
 
-class GameplaySAC(ReachAvoidSAC):
-  """Two-player REACH-AVOID game — Gameplay Filters (eq. 6a).
+class AbstractSAC2P(AbstractSAC):
+  """Two-player off-policy game; the backup is chosen by ``_MODE``."""
 
-  Anchor ``min(l, g)``; needs a target margin ``l``. For a two-player *avoid*
-  game (no target set) use :class:`IsaacsSAC`.
-  """
-
-  policy_aliases = {"MlpPolicy": IsaacsPolicy, "MultiInputPolicy": IsaacsPolicy}
-  _MODE = backups.REACH_AVOID
+  policy_aliases = {"MlpPolicy": TwoPlayerSACPolicy,
+                    "MultiInputPolicy": TwoPlayerSACPolicy}
 
   def __init__(
     self,
@@ -63,16 +60,16 @@ class GameplaySAC(ReachAvoidSAC):
     ctrl_action_dim: int | None = None,  # None only on load (restored from policy_kwargs)
     ctrl_update_period: int = 1,
     dstb_update_period: int = 1,
-    # --- per-network / per-actor learning rates (audit issue 1) ---
-    # Each is None -> falls back to the shared ``learning_rate`` (so existing
-    # callers are unchanged). ``dstb_learning_rate`` is the dstb ACTOR lr;
-    # ``ent_coef_lr`` / ``dstb_ent_coef_lr`` are the ctrl / dstb ENTROPY (alpha)
-    # optimizer lrs. The ctrl actor always uses the shared ``learning_rate``.
+    # --- per-network / per-actor learning rates ---
+    # Each is None -> falls back to the shared ``learning_rate``.
+    # ``dstb_learning_rate`` is the dstb ACTOR lr; ``ent_coef_lr`` /
+    # ``dstb_ent_coef_lr`` are the ctrl / dstb ENTROPY (alpha) optimizer lrs.
+    # The ctrl actor always uses the shared ``learning_rate``.
     critic_learning_rate: float | None = None,
     dstb_learning_rate: float | None = None,
     ent_coef_lr: float | None = None,
     dstb_ent_coef_lr: float | None = None,
-    # --- optional StepLR decay for the ctrl/dstb/critic optimizers (issue 2) ---
+    # --- optional StepLR decay for the ctrl/dstb/critic optimizers ---
     # OFF by default (constant lr). When on, each lr decays by ``lr_decay`` every
     # ``lr_period`` env-steps toward ``lr_end`` (reference StepLR). The entropy
     # (alpha) lrs stay constant -- an alpha-lr schedule is a follow-up.
@@ -80,7 +77,7 @@ class GameplaySAC(ReachAvoidSAC):
     lr_period: int = 1_000_000,
     lr_decay: float = 0.1,
     lr_end: float = 0.0,
-    # --- leaderboard (increment 3) ---
+    # --- league ---
     use_leaderboard: bool = False,
     leaderboard_eval_env=None,
     save_top_k_ctrl: int = 5,
@@ -88,7 +85,7 @@ class GameplaySAC(ReachAvoidSAC):
     softmax_rationality: float = 3.0,
     leaderboard_freq: int = 10_000,
     n_eval_episodes: int = 10,
-    leaderboard_dir: str = "isaacs_leaderboard",
+    leaderboard_dir: str = "sac_2p_leaderboard",
     **kwargs,
   ) -> None:
     self.ctrl_action_dim = None if ctrl_action_dim is None else int(ctrl_action_dim)
@@ -132,7 +129,7 @@ class GameplaySAC(ReachAvoidSAC):
     super()._setup_model()  # sets ctrl entropy (target = -full_dim) and aliases
     # Resolve the per-network / per-actor lrs now that self.lr_schedule exists.
     # None -> shared learning_rate. ``_ctrl_lr`` is the shared value; the ctrl
-    # entropy lr (``_ent_coef_lr``) is read by SafetySAC._reset_entropy_temp.
+    # entropy lr (``_ent_coef_lr``) is read by AbstractSAC._reset_entropy_temp.
     shared_lr = float(self.lr_schedule(1))
     self._ctrl_lr = shared_lr
     self._critic_lr = shared_lr if self._critic_lr_arg is None else float(self._critic_lr_arg)
@@ -168,16 +165,16 @@ class GameplaySAC(ReachAvoidSAC):
       self.dstb_ent_coef_tensor = th.tensor(float(self.ent_coef), device=self.device)
 
     # Snapshot the dstb init entropy temperature so a gamma jump can reset it
-    # too (the ctrl init is snapshotted in SafetySAC._setup_entropy_bounds).
+    # too (the ctrl init is snapshotted in AbstractSAC._setup_entropy_bounds).
     self._init_dstb_log_ent_coef = (
       None if self.dstb_log_ent_coef is None
       else self.dstb_log_ent_coef.detach().clone())
 
-    # IsaacsPolicy._build built actor/dstb_actor/critic at the shared lr, and
-    # SB3 built the ctrl ent_coef optimizer at the shared lr; stamp the dedicated
-    # lrs so they hold even before the first train() step (the dstb ent optimizer
-    # was already built at its dedicated lr above). The ctrl actor keeps the
-    # shared lr.
+    # TwoPlayerSACPolicy._build built actor/dstb_actor/critic at the shared lr,
+    # and SB3 built the ctrl ent_coef optimizer at the shared lr; stamp the
+    # dedicated lrs so they hold even before the first train() step (the dstb ent
+    # optimizer was already built at its dedicated lr above). The ctrl actor
+    # keeps the shared lr.
     update_learning_rate(self.critic.optimizer, self._critic_lr)
     update_learning_rate(self.dstb_actor.optimizer, self._dstb_lr)
     if self.ent_coef_optimizer is not None:
@@ -187,8 +184,30 @@ class GameplaySAC(ReachAvoidSAC):
       self._leaderboard = Leaderboard(seed=self.seed or 0, **self._lb_cfg)
       self._scratch_ctrl = copy.deepcopy(self.policy.actor)
       self._scratch_dstb = copy.deepcopy(self.policy.dstb_actor)
+      # The league's estimator. Everything about scoring lives in
+      # leaderboard.py; this class only decides WHEN to refresh the board.
+      self._league_eval = LeagueEvaluator(
+        env=self._lb_eval_env,
+        device=self.device,
+        n_eval_episodes=self.n_eval_episodes,
+        dstb_action_dim=self.policy.dstb_action_dim,
+        unscale_action=self.policy.unscale_action,
+        success=self._league_success,
+        obs_normalizer=lambda: (self.env if hasattr(self.env, "normalize_obs")
+                                else None),
+      )
 
-  # --- leaderboard: roll out against a sampled past disturbance ---
+  # --- the league's win condition -------------------------------------------
+  # The avoid game has no target set, so survival IS the win. ReachAvoidSAC2P
+  # overrides this with the extra reach requirement. Passing the rule to the
+  # evaluator (rather than a mode flag) is what lets both modes share one
+  # scorer without either of them carrying the other's machinery.
+
+  @staticmethod
+  def _league_success(safe, reached):
+    return safe
+
+  # --- league: roll out against a sampled past disturbance ---
   def _resample_rollout_dstb(self) -> None:
     step = self._leaderboard.sample_dstb_step()
     if step is None:
@@ -214,142 +233,28 @@ class GameplaySAC(ReachAvoidSAC):
       self._next_lb_step += self.leaderboard_freq
     return out
 
-  _LB_MAX_STEPS = 400
-
-  @property
-  def _is_reach_avoid(self) -> bool:
-    """True for the reach-avoid game (needs a target l), False for avoid-only.
-    Avoid-only success == safe (never entered the failure set); reach-avoid
-    success == reached the target AND stayed safe."""
-    return self._MODE == backups.REACH_AVOID
-
-  @th.no_grad()
-  def _eval_pair(self, ctrl_actor, dstb_actor) -> float:
-    """Success rate of ``ctrl`` vs ``dstb`` (None = dummy/no-dstb). Reach-avoid:
-    reached target AND safe; avoid-only: safe (the reach term does not apply).
-
-    Uses a parallel ``VecEnv`` eval env when available (one batch = ``num_envs``
-    first-episodes, much cheaper for large leaderboards); otherwise falls back to
-    the single-env loop.
-    """
-    env = self._lb_eval_env
-    dn = self.policy.dstb_action_dim
-    if getattr(env, "is_tensor_env", False):
-      # GPU-resident eval: step_tensor on-device, NO numpy VecEnv + no per-step
-      # host<->device sync. This is ~10-50x faster than the numpy path and is the
-      # main leaderboard-throughput fix (profiling: the numpy _eval_pair_vec was
-      # ~100s per _leaderboard_step). Same success semantics as _eval_pair_vec.
-      return self._eval_pair_tensor(env, ctrl_actor, dstb_actor, dn)
-    if hasattr(env, "num_envs") and hasattr(env, "step_async"):
-      return self._eval_pair_vec(env, ctrl_actor, dstb_actor, dn)
-
-    succ = 0
-    for _ in range(self.n_eval_episodes):
-      obs, _ = env.reset()
-      done = safe = reached = False
-      safe = True
-      while not done:
-        ot = th.as_tensor(np.asarray(obs), dtype=th.float32, device=self.device).reshape(1, -1)
-        c = ctrl_actor(ot, deterministic=True).cpu().numpy()[0]
-        d = (
-          np.zeros(dn, np.float32)
-          if dstb_actor is None
-          else dstb_actor(ot, deterministic=True).cpu().numpy()[0]
-        )
-        scaled = np.concatenate([c, d]).astype(np.float32)  # [-1, 1]
-        action = self.policy.unscale_action(scaled[None])[0]
-        obs, g, term, trunc, info = env.step(action)
-        done = bool(term or trunc)
-        if g < 0:
-          safe = False
-        if float(info.get("l_x", -1.0)) >= 0:
-          reached = True
-      succ += int(safe and (reached or not self._is_reach_avoid))
-    return succ / max(self.n_eval_episodes, 1)
-
-  def _eval_pair_vec(self, env, ctrl_actor, dstb_actor, dn) -> float:
-    """Parallel reach-avoid success over ``num_envs`` * ``n_eval_episodes`` first-episodes."""
-    n_env = env.num_envs
-    total_succ, total = 0, 0
-    for _ in range(max(1, self.n_eval_episodes)):
-      obs = env.reset()
-      ep_safe = np.ones(n_env, dtype=bool)
-      ep_reached = np.zeros(n_env, dtype=bool)
-      done_once = np.zeros(n_env, dtype=bool)
-      for _ in range(self._LB_MAX_STEPS):
-        ot = th.as_tensor(np.asarray(obs), dtype=th.float32, device=self.device)
-        c = ctrl_actor(ot, deterministic=True).cpu().numpy()
-        d = (
-          np.zeros((n_env, dn), np.float32)
-          if dstb_actor is None
-          else dstb_actor(ot, deterministic=True).cpu().numpy()
-        )
-        env.step_async(np.concatenate([c, d], axis=1).astype(np.float32))
-        obs, g, dones, infos = env.step_wait()
-        active = ~done_once
-        ep_safe &= ~(active & (np.asarray(g) < 0))
-        lx = np.array([i.get("l_x", -1.0) for i in infos], dtype=np.float32)
-        ep_reached |= active & (lx >= 0)
-        done_once |= active & np.asarray(dones, dtype=bool)
-        if done_once.all():
-          break
-      hits = ep_safe if not self._is_reach_avoid else (ep_safe & ep_reached)
-      total_succ += int(hits.sum())
-      total += n_env
-    return total_succ / max(total, 1)
-
-  @th.no_grad()
-  def _eval_pair_tensor(self, env, ctrl_actor, dstb_actor, dn) -> float:
-    """GPU-resident twin of ``_eval_pair_vec``: rolls out on a RAW tensor eval env
-    via ``step_tensor`` — everything stays on device, no numpy VecEnv and no
-    per-step host<->device sync. Obs are normalized with the LIVE training
-    normalizer (``self.env.normalize_obs``) each step, so no stats to sync; the
-    margins g/l are physical (unnormalized) and drive safe/reached. Same success
-    semantics (avoid = never g<0; reach-avoid = that AND ever l>=0). Actors output
-    [-1,1] and the env clamps, so no unscale (mirrors _tensor_policy_actions)."""
-    dev = env.device
-    n = env.num_envs
-    norm = self.env if hasattr(self.env, "normalize_obs") else None
-    total_succ, total = 0, 0
-    for _ in range(max(1, self.n_eval_episodes)):
-      raw = env.reset()
-      if not th.is_tensor(raw):
-        raw = th.as_tensor(np.asarray(raw), dtype=th.float32, device=dev)
-      ep_safe = th.ones(n, dtype=th.bool, device=dev)
-      ep_reached = th.zeros(n, dtype=th.bool, device=dev)
-      done_once = th.zeros(n, dtype=th.bool, device=dev)
-      for _ in range(self._LB_MAX_STEPS):
-        obs = norm.normalize_obs(raw) if norm is not None else raw
-        c = ctrl_actor(obs, deterministic=True)
-        d = (th.zeros((n, dn), device=dev) if dstb_actor is None
-             else dstb_actor(obs, deterministic=True))
-        raw, g, dones, _timeouts, l_x = env.step_tensor(th.cat([c, d], dim=1))
-        active = ~done_once
-        ep_safe &= ~(active & (g.reshape(n) < 0))
-        ep_reached |= active & (l_x.reshape(n) >= 0)
-        done_once |= active & dones.reshape(n).bool()
-        if bool(done_once.all()):
-          break
-      hits = ep_safe if not self._is_reach_avoid else (ep_safe & ep_reached)
-      total_succ += int(hits.sum().item())
-      total += n
-    return total_succ / max(total, 1)
-
   def _leaderboard_step(self) -> None:
+    """Refresh the live frontier of the board, then admit/evict.
+
+    Only the current ctrl's row and the current dstb's column are recomputed —
+    archived-vs-archived cells are carried over by :meth:`Leaderboard.prune`, so
+    each refresh costs ``nc + nd + 2`` evaluations rather than a full matrix.
+    """
     lb = self._leaderboard
+    ev = self._league_eval
     step = self.num_timesteps
     nc, nd, kc, kd = len(lb.ctrl_steps), len(lb.dstb_steps), lb.kc, lb.kd
     ctrl_cur, dstb_cur = self.policy.actor, self.policy.dstb_actor
     # current ctrl (row kc) vs each opponent
     for j in range(nd):
       lb.load_actor(self._scratch_dstb, "dstb", lb.dstb_steps[j])
-      lb.set_score(kc, j, self._eval_pair(ctrl_cur, self._scratch_dstb))
-    lb.set_score(kc, kd, self._eval_pair(ctrl_cur, dstb_cur))  # current dstb
-    lb.set_score(kc, kd + 1, self._eval_pair(ctrl_cur, None))  # dummy
+      lb.set_score(kc, j, ev.score(ctrl_cur, self._scratch_dstb))
+    lb.set_score(kc, kd, ev.score(ctrl_cur, dstb_cur))  # current dstb
+    lb.set_score(kc, kd + 1, ev.score(ctrl_cur, None))  # dummy
     # each saved ctrl vs current dstb (col kd)
     for i in range(nc):
       lb.load_actor(self._scratch_ctrl, "ctrl", lb.ctrl_steps[i])
-      lb.set_score(i, kd, self._eval_pair(self._scratch_ctrl, dstb_cur))
+      lb.set_score(i, kd, ev.score(self._scratch_ctrl, dstb_cur))
     lb.prune(step, ctrl_cur, dstb_cur)
     self.logger.record("leaderboard/n_ctrl", len(lb.ctrl_steps))
     self.logger.record("leaderboard/n_dstb", len(lb.dstb_steps))
@@ -383,7 +288,7 @@ class GameplaySAC(ReachAvoidSAC):
     env's ``ctrl_dim + dstb_dim`` action. The GPU-resident analog of
     :meth:`_sample_action` (numpy path); without it the base single-player
     collect samples ctrl only and mismatches the env's action space. The dstb
-    is the leaderboard-sampled opponent when active, else the current dstb actor
+    is the league-sampled opponent when active, else the current dstb actor
     (mirrors the numpy path). Actors output in [-1, 1] and the env action space
     is [-1, 1], so no unscaling is needed — the collect loop clamps to bounds.
     """
@@ -404,7 +309,7 @@ class GameplaySAC(ReachAvoidSAC):
       optimizer.zero_grad()
       loss.backward()
       optimizer.step()
-      # min_alpha/max_alpha floor/ceiling (issue 7) -- both actors share bounds.
+      # min_alpha/max_alpha floor/ceiling -- both actors share bounds.
       if self._log_min_alpha is not None or self._log_max_alpha is not None:
         with th.no_grad():
           log_coef.clamp_(min=self._log_min_alpha, max=self._log_max_alpha)
@@ -427,7 +332,7 @@ class GameplaySAC(ReachAvoidSAC):
         dstb_lr = float(self.lr_schedule(1))
       self.dstb_ent_coef_optimizer = th.optim.Adam([dlec], lr=dstb_lr)
 
-  # --- per-network learning-rate control (audit issues 1 & 2) --------------
+  # --- per-network learning-rate control ------------------------------------
   def _steplr_value(self, base_lr: float) -> float:
     """Reference StepLR: ``base * lr_decay ** (env_steps // lr_period)``,
     floored at ``lr_end``."""
@@ -500,7 +405,7 @@ class GameplaySAC(ReachAvoidSAC):
         self.dstb_ent_coef_tensor, self.dstb_target_entropy, dstb_logp,
       )
 
-      # --- critic update (reach-avoid, soft max-min next value) ---
+      # --- critic update (soft max-min next value) ---
       with th.no_grad():
         next_ctrl, next_ctrl_logp = self.actor.action_log_prob(rd.next_observations)
         next_dstb, next_dstb_logp = self.dstb_actor.action_log_prob(
@@ -514,13 +419,9 @@ class GameplaySAC(ReachAvoidSAC):
           - ctrl_ent * next_ctrl_logp.reshape(-1, 1)
           + dstb_ent * next_dstb_logp.reshape(-1, 1)
         )
-        # Backup for THIS class's problem -- see safety_sb3.backups.
-        # GameplaySAC -> reach-avoid (eq. 6a); IsaacsSAC -> avoid (eq. 7).
-        gs = rd.rewards
-        not_done = 1.0 - rd.dones
-        target_q = backups.target(
-          self._MODE, gs, next_q, not_done, self.gamma,
-          l=getattr(rd, "l_x", None), terminal_type=self.terminal_type)
+        # Backup for THIS learner's mode -- see safety_sb3.backups.
+        # ReachAvoidSAC2P -> reach-avoid (eq. 6a); SafetySAC2P -> avoid (eq. 7).
+        target_q = self._bellman_target(rd, next_q)
 
       current_q = self.critic(rd.observations, rd.actions)
       critic_loss = 0.5 * sum(F.mse_loss(cq, target_q) for cq in current_q)
@@ -570,20 +471,20 @@ class GameplaySAC(ReachAvoidSAC):
       self.logger.record("train/ctrl_actor_loss", np.mean(ctrl_losses))
     if dstb_losses:
       self.logger.record("train/dstb_actor_loss", np.mean(dstb_losses))
-    # Per-actor entropy temperature (alpha) + gamma (issue 3: reference logs
-    # hyper_parameters/alpha_ctrl|alpha_dstb|gamma). ctrl_ent/dstb_ent hold the
+    # Per-actor entropy temperature (alpha) + gamma; ctrl_ent/dstb_ent hold the
     # last step's values.
     self.logger.record("train/ent_coef_ctrl", float(ctrl_ent.mean()))
     self.logger.record("train/ent_coef_dstb", float(dstb_ent.mean()))
     self.logger.record("train/gamma", float(self.gamma))
 
   def _excluded_save_params(self):
-    # Leaderboard runtime objects are rebuilt by _setup_model on load; the eval
-    # env in particular is unpicklable (e.g. mjlab holds a mujoco MjSpec).
+    # League runtime objects are rebuilt by _setup_model on load; the eval env in
+    # particular is unpicklable (e.g. mjlab holds a mujoco MjSpec).
     return super()._excluded_save_params() + [
       "dstb_actor",
       "_lb_eval_env",
       "_leaderboard",
+      "_league_eval",
       "_scratch_ctrl",
       "_scratch_dstb",
       "_rollout_dstb",
@@ -598,21 +499,39 @@ class GameplaySAC(ReachAvoidSAC):
     return state_dicts, others
 
 
-class IsaacsSAC(GameplaySAC):
-  """Two-player AVOID game — ISAACS proper (Hsu et al. 2022, eq. 7).
+# ----------------------------------------------------------------- the modes
 
-  ``V(s) = (1-γ)·g + γ·max_ctrl min_dstb min(g, V')``: the robust-invariance
-  value under a worst-case disturbance. No target set, no ``l`` — the paper has
-  neither.
+class SafetySAC2P(AbstractSAC2P):
+  """Two-player off-policy **avoid** game — ISAACS proper (Hsu et al. 2022,
+  eq. 7)::
 
-  This is the class to use for an adversarial *avoid* task (e.g. "stay standing
-  against a worst-case force"). Do NOT emulate it by giving
-  :class:`GameplaySAC` a degenerate ``l``: no ``l`` reduces the reach-avoid
-  operator to avoid (:mod:`safety_sb3.backups` proves the two conditions are
-  contradictory), and the constant-``l`` trick that appeared to work before
-  v0.2.0 relied on a bug in the reach-avoid anchor.
+      V(s) = (1-γ)·g + γ·max_ctrl min_dstb min(g, V')
 
+  the robust-invariance value under a worst-case disturbance. No target set, no
+  ``l`` — the paper has neither.
+
+  This is the class for an adversarial *avoid* task ("stay standing against a
+  worst-case force"). Do NOT emulate it by giving :class:`ReachAvoidSAC2P` a
+  degenerate ``l``: no ``l`` reduces the reach-avoid operator to avoid
+  (:mod:`safety_sb3.backups` proves the two conditions are contradictory).
   ``l`` is ignored if present, so an ``l``-carrying replay buffer is harmless.
   """
 
   _MODE = backups.AVOID
+
+
+class ReachAvoidSAC2P(AbstractSAC2P):
+  """Two-player off-policy **reach-avoid** game — Gameplay Filters (Hsu et al.
+  2024, eq. 6a), which extends ISAACS to reach-avoid: anchor ``min(l, g)``.
+
+  Needs a target margin ``l``; the base defaults the replay buffer to the
+  ``l``-carrying one off this ``_MODE``. For a two-player *avoid* game (no
+  target set) use :class:`SafetySAC2P`.
+  """
+
+  _MODE = backups.REACH_AVOID
+
+  @staticmethod
+  def _league_success(safe, reached):
+    """Reach-avoid: the controller must have reached the target AND stayed safe."""
+    return safe & reached

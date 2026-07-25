@@ -1,12 +1,18 @@
-"""GPU-resident rollout buffers with the safety backups (torch twins of
-:mod:`safety_sb3.safety_buffers` — identical math, no numpy on the hot path).
+"""GPU-resident rollout buffers — torch twins of :mod:`safety_sb3.buffers_rollout`.
 
-Both call the same operators as the numpy buffers, from
-:mod:`safety_sb3.backups`; ``tests/test_backups.py`` asserts exact parity.
-``get()`` yields standard ``RolloutBufferSamples`` whose fields are
-device tensors, so stock ``PPO.train()`` consumes them unchanged. ``values`` /
+Identical math, no numpy on the hot path. One class per Mode, player-agnostic
+(see the numpy module for why buffers carry no ``1P``/``2P``). Both families
+call the same operators from :mod:`safety_sb3.backups`; ``tests/test_backups.py``
+asserts exact parity.
+
+``get()`` yields standard ``RolloutBufferSamples`` whose fields are device
+tensors, so stock ``PPO.train()`` consumes them unchanged. ``values`` /
 ``returns`` are exposed as numpy properties (PPO's explained-variance logging
 touches them once per update).
+
+:meth:`TensorSafetyRolloutBuffer.record_extras` is the tensor twin of the numpy
+buffers' ``infos`` capture: on this path the env returns ``l_x`` directly from
+``step_tensor``, so the buffer receives the tensor rather than a list of dicts.
 """
 
 from __future__ import annotations
@@ -22,7 +28,7 @@ from . import backups
 
 
 class TensorSafetyRolloutBuffer:
-  """Torch rollout buffer with the Safety Bellman backup."""
+  """Torch rollout buffer with the AVOID (safety) Bellman backup."""
 
   is_tensor_buffer = True
 
@@ -75,6 +81,14 @@ class TensorSafetyRolloutBuffer:
     self.pos += 1
     if self.pos == self.buffer_size:
       self.full = True
+
+  def record_extras(self, l_x: th.Tensor) -> None:
+    """Capture per-step extras into the slot ``add()`` will fill.
+
+    Tensor twin of the numpy buffers' ``record_extras(infos)``: the GPU-resident
+    env hands back ``l_x`` from ``step_tensor`` directly, so there are no infos
+    to parse. No-op here — the avoid operator needs only ``g``.
+    """
 
   # --- backup ---------------------------------------------------------------
   #: backup this buffer computes; the ``mode=`` ctor kwarg overrides it
@@ -132,8 +146,8 @@ class TensorSafetyRolloutBuffer:
 class TensorReachAvoidRolloutBuffer(TensorSafetyRolloutBuffer):
   """Torch rollout buffer with the reach-avoid backup (adds ``l_x``).
 
-  Torch twin of :class:`safety_sb3.safety_buffers.ReachAvoidRolloutBuffer`;
-  see it for the operator, the anchor rationale, and ``terminal_type``.
+  Torch twin of :class:`safety_sb3.buffers_rollout.ReachAvoidRolloutBuffer`; see
+  it for the operator, the anchor rationale, and ``terminal_type``.
   """
 
   _MODE = backups.REACH_AVOID
@@ -145,3 +159,14 @@ class TensorReachAvoidRolloutBuffer(TensorSafetyRolloutBuffer):
   def reset(self) -> None:
     super().reset()
     self.l_x = th.zeros(self.buffer_size, self.n_envs, device=self.device)
+
+  def record_extras(self, l_x: th.Tensor) -> None:
+    """Keep this step's target margin ``l(s)`` (straight off ``step_tensor``)."""
+    self.l_x[self.pos] = l_x.reshape(self.n_envs)
+
+
+class TensorCumulativeRolloutBuffer(TensorSafetyRolloutBuffer):
+  """Torch twin of :class:`safety_sb3.buffers_rollout.CumulativeRolloutBuffer` —
+  the ordinary discounted-return backup, i.e. stock GAE on device."""
+
+  _MODE = backups.CUMULATIVE

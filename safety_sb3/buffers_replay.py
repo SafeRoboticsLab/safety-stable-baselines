@@ -1,13 +1,19 @@
-"""Replay buffers for reach-avoid / ISAACS safety RL.
+"""Off-policy replay buffer for the reach-avoid Mode — player-agnostic.
 
-``ReachAvoidReplayBuffer`` extends SB3's :class:`ReplayBuffer` with the
-**target margin** ``l(s)`` needed for the reach-avoid Bellman backup
-``V(s) = min(g(s), max(l(s), V(s')))``.  The safety margin ``g(s)`` continues to
-ride on the standard ``reward`` field (as in :class:`SafetySAC`); the env supplies
-``l(s)`` per step via ``info["l_x"]``.
+Like the rollout buffers, replay buffers carry the **M** of MAP and nothing
+else: both the single-player and two-player reach-avoid SAC learners store into
+the same class (the two-player game concatenates ``[a_ctrl, a_dstb]`` into the
+ordinary action field, so no extra column is needed).
 
-A later increment will add the disturbance/adversary action field here for the
-full ISAACS two-player game.
+``ReachAvoidReplayBuffer`` extends SB3's :class:`ReplayBuffer` with the **target
+margin** ``l(s)`` that the reach-avoid backup needs::
+
+    V(s) = (1-gamma)*min(l, g) + gamma*min(g, max(l, V(s')))
+
+The safety margin ``g(s)`` keeps riding on the standard ``reward`` field; the
+env supplies ``l(s)`` per step via ``info["l_x"]``, and the buffer captures it
+itself in :meth:`ReachAvoidReplayBuffer.add`. The avoid and cumulative modes need
+no extra column and use SB3's stock ``ReplayBuffer``.
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ class ReachAvoidReplayBufferSamples(NamedTuple):
 class ReachAvoidReplayBuffer(ReplayBuffer):
   """SB3 replay buffer that also stores the per-step target margin ``l(s)``.
 
-  ``l(s)`` is read from ``info["l_x"]`` on each ``add``.  Assumes the default
+  ``l(s)`` is read from ``info["l_x"]`` on each ``add``. Assumes the default
   SAC buffer layout (``optimize_memory_usage=False``), which stores
   ``next_observations`` explicitly.
   """

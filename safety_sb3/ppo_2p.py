@@ -1,42 +1,54 @@
-"""Two-player (adversarial) safety RL on SB3 — the PPO family.
+"""Two-player (adversarial) PPO — the **2P** half of the PPO family.
+
+    AbstractPPO                 (ppo_base.py)
+    └─ AbstractPPO2P            two actors, two value nets, two buffers, phases
+        ├─ SafetyPPO2P          _MODE = AVOID
+        └─ ReachAvoidPPO2P      _MODE = REACH_AVOID   (+ _ReachAvoidPlumbing)
 
 The control player MAXIMIZES the value, the disturbance player MINIMIZES it, and
-a leaderboard of archived opponents damps cycling. Two classes, one per problem
-— the machinery is shared, only the backup differs (see
-:mod:`safety_sb3.backups`); in the PPO family the backup is carried by the
-rollout buffer, so each class selects its buffer pair:
+a league of archived opponents damps cycling. Both players are ordinary PPO
+policies over disjoint SUB-spaces of the env's concatenated action space (the
+env exposes one ``Box(ctrl_dim + dstb_dim)`` and splits it; ``g`` rides on the
+reward channel, ``l`` — reach-avoid only — on ``info["l_x"]``).
 
-* :class:`IsaacsPPO`  — two-player **avoid** game. ISAACS proper
-  (Hsu, Nguyen, Fisac 2022, eq. 7): no target set, anchor ``g``.
-* :class:`GameplayPPO` — two-player **reach-avoid** game. Gameplay Filters
-  (Hsu et al. 2024, eq. 6a), which extends ISAACS to reach-avoid: anchor
-  ``min(l, g)``.
-
-The games and leaderboard semantics match :class:`IsaacsSAC` / :class:`GameplaySAC`;
-the learner differs:
-
-* both players are PPO policies over SUB-spaces of the env's concatenated
-  action space (same env contract as the SAC family: one
-  ``Box(ctrl_dim + dstb_dim)`` action, split by the env; ``g`` on the reward
-  channel; ``l`` via ``info["l_x"]``, reach-avoid only);
-* the targets are computed on-policy per rollout (in the rollout buffer); the
+* the targets are computed on-policy per rollout, inside the rollout buffer; the
   min player trains on the SAME targets with a NEGATED advantage (negation
   commutes with advantage normalization) — the zero-sum property;
 * training alternates in phases (dstb pretrain, then K dstb / M ctrl rollout
   cycles); the frozen player acts stochastically;
-* with ``n_envs > 1``, leaderboard opponents are assigned to env SLICES so a
-  single on-policy batch contains rollouts against the whole archived
-  population (validated at 1280 GPU-parallel envs in ``unitree_rl_mjlab``;
-  off-policy ISAACS saturates at ~32-64 envs).
+* with ``n_envs > 1``, league opponents are assigned to env SLICES so a single
+  on-policy batch contains rollouts against the whole archived population
+  (validated at 1280 GPU-parallel envs in ``unitree_rl_mjlab``; off-policy
+  two-player SAC saturates at ~32-64 envs).
 
 ``self.policy`` is always the CONTROL policy — ``predict()``, ``save()``, and
-downstream filter wrappers see the deployable controller, as in
-:class:`IsaacsPolicy`.
+downstream filter wrappers see the deployable controller.
 
-.. warning::
-   Before v0.2.0 ``IsaacsPPO`` was the *reach-avoid* game (now
-   :class:`GameplayPPO`) and there was no two-player avoid class. See
-   RELEASE_NOTES.md.
+Why this is NOT the same object as :mod:`safety_sb3.sac_2p`
+-----------------------------------------------------------
+
+Both classes hold two actors, and it is tempting to read them as one algorithm
+with two optimizers. They are not, and the difference is forced by where each
+family's critic takes its action:
+
+* **SAC 2P** has ONE twin critic over the JOINT action ``Q(s, [a_ctrl, a_dstb])``,
+  one replay buffer, and continuous updates. Because the critic takes the action,
+  that single Q *is* the game value, and both actors differentiate through the
+  same object — ctrl ascends it, dstb descends it. Nothing needs to be scheduled,
+  and replay makes the learner indifferent to whose policy generated the data.
+  **This is the minimax game as ISAACS formulates it.**
+* **PPO 2P** (here) has TWO independent state-only value nets ``V(s)``, two
+  rollout buffers, and a phase machine. A state-only critic cannot represent
+  "value of this joint action", so each player needs its own advantage, its own
+  importance ratio, and — because PPO is on-policy — its own freshly collected
+  data. That is exactly what the phase machine exists for, and exactly why SAC
+  needs no phases. **This is an alternating best-response approximation**, not
+  the simultaneous saddle point.
+
+They are therefore not interchangeable, and there is deliberately no cross-family
+``AbstractTwoPlayer`` base: the two differ in their *state* — one critic vs two,
+one buffer vs two, phases vs none — not merely in their update loops. A shared
+parent could only hold the names.
 """
 
 from __future__ import annotations
@@ -50,25 +62,27 @@ from stable_baselines3.common.utils import obs_as_tensor
 from stable_baselines3.common.vec_env import VecEnv
 
 from . import backups
+from .buffers_rollout import rollout_buffer_classes
 from .leaderboard import Leaderboard
-from .reach_avoid_ppo import ReachAvoidPPO
-from .safety_buffers import SafetyRolloutBuffer
-from .tensor_buffers import TensorSafetyRolloutBuffer
+from .ppo_base import AbstractPPO
+from .reach_avoid_mixin import _ReachAvoidPlumbing
 
 # Slice opponent codes (match Leaderboard.sample_dstb_slices).
 _ZERO, _RANDOM, _CURRENT = -3, -2, -1
 
 
-class GameplayPPO(ReachAvoidPPO):
-  """Two-player on-policy REACH-AVOID game with leaderboard opponents.
+class AbstractPPO2P(AbstractPPO):
+  """Two-player on-policy game with league opponents, backup chosen by ``_MODE``.
 
-  Gameplay Filters (Hsu et al. 2024, eq. 6a), which extends ISAACS to
-  reach-avoid: anchor ``min(l, g)``; needs a target margin ``l`` (``info["l_x"]``
-  on the numpy path, ``step_tensor``'s ``l_x`` on the tensor path). For a
-  two-player *avoid* game (no target set) use :class:`IsaacsPPO`.
+  :param ctrl_action_dim: number of leading action dims belonging to the control
+      player; the rest are the disturbance.
+  :param dstb_pretrain_rollouts: rollouts spent training only the disturbance
+      before the alternation starts.
+  :param ctrl_rollouts_per_cycle / dstb_rollouts_per_cycle: the alternation.
+  :param use_leaderboard: archive opponents and assign them to env slices.
+  :param dstb_learning_rate / dstb_ent_coef: per-player optimization; ``None``
+      inherits the ctrl value.
   """
-
-  _MODE = backups.REACH_AVOID
 
   def __init__(
     self,
@@ -84,7 +98,7 @@ class GameplayPPO(ReachAvoidPPO):
     ctrl_rollouts_per_cycle: int = 4,
     dstb_rollouts_per_cycle: int = 1,
     use_leaderboard: bool = False,
-    leaderboard_dir: str = "isaacs_ppo_leaderboard",
+    leaderboard_dir: str = "ppo_2p_leaderboard",
     save_top_k_ctrl: int = 5,
     save_top_k_dstb: int = 5,
     softmax_rationality: float = 3.0,
@@ -143,16 +157,18 @@ class GameplayPPO(ReachAvoidPPO):
       self.observation_space, dstb_space, self.lr_schedule,
       use_sde=self.use_sde, **self.policy_kwargs,
     ).to(self.device)
-    # Both buffers must carry THIS class's backup, so both come from the class
-    # attributes (hardcoding the reach-avoid buffer here gave IsaacsPPO's min
-    # player the wrong game).
-    dstb_buf_cls = (self.tensor_rollout_buffer_class if self._tensor_path
-                    else self.numpy_rollout_buffer_class)
+    # Both buffers must carry THIS learner's backup, so both are looked up from
+    # _MODE (hardcoding the reach-avoid buffer here once gave the avoid learner's
+    # min player the wrong game), and both get the same buffer kwargs (the ctrl
+    # buffer used to receive terminal_type and the dstb buffer silently did not).
+    numpy_cls, tensor_cls = rollout_buffer_classes(self._MODE)
+    dstb_buf_cls = tensor_cls if self._tensor_path else numpy_cls
     self.dstb_rollout_buffer = dstb_buf_cls(
       self.n_steps, self.observation_space, dstb_space,
       device=self.device, gamma=self.gamma, gae_lambda=self.gae_lambda,
-      n_envs=self.n_envs,
+      n_envs=self.n_envs, **(self.rollout_buffer_kwargs or {}),
     )
+    self._check_rollout_buffer(self.dstb_rollout_buffer)
 
     self._leaderboard: Leaderboard | None = None
     if self._use_lb:
@@ -173,17 +189,14 @@ class GameplayPPO(ReachAvoidPPO):
     self._slice_of_env = (np.arange(n) * self._n_slices // max(n, 1)).clip(
       max=self._n_slices - 1
     )
-    # Per-episode leaderboard flags. ``_ever_l`` is reach-avoid-only (the avoid
-    # game has no target set); leaving it unallocated in avoid mode keeps a
-    # future unguarded use loud instead of silently all-False.
-    if self._is_reach_avoid:
-      self._ever_l = np.zeros(n, dtype=bool)
+    # Per-episode league flags (numpy path).
     self._ever_gneg = np.zeros(n, dtype=bool)
+    self._alloc_reach_flags(self._ever_gneg)
 
     # Per-player KL-adaptive LR state: a SHARED controller cross-contaminates
     # (a dstb phase's KL would move the LR the next ctrl phase trains with,
     # and vice versa). Each player keeps its own scalar; train() swaps the
-    # active one into SafetyPPO's controller and stores it back after.
+    # active one into AbstractPPO's controller and stores it back after.
     if self.adaptive_lr:
       self._adaptive_lr_ctrl = float(self._adaptive_lr)
       self._adaptive_lr_dstb = float(self._dstb_lr if self._dstb_lr is not None
@@ -205,22 +218,33 @@ class GameplayPPO(ReachAvoidPPO):
   def _cycle_len(self) -> int:
     return self._dstb_per_cycle + self._ctrl_per_cycle
 
-  # --- leaderboard episode outcome ---------------------------------------------
+  # --- league episode outcome --------------------------------------------------
+  # The win condition is "ctrl survived to the time limit without ever violating
+  # g", AND -- in reach-avoid only -- "reached the target at some point". The
+  # reach conjunct is supplied by _ReachAvoidPlumbing; the no-ops below are the
+  # avoid game's answer, which is that survival IS the win because there is no
+  # target set. Nothing here has to be switched back off.
+
+  def _alloc_reach_flags(self, like) -> None:
+    """Allocate extra per-episode flags the mode's win condition needs."""
+
+  def _note_reach(self, step_l) -> None:
+    """Record per-step target-margin evidence (``infos`` or an ``l_x`` tensor)."""
+
+  def _reach_flag(self):
+    """Extra conjunct in the win condition; ``True`` == no extra requirement."""
+    return True
+
+  def _clear_reach(self, dones) -> None:
+    """Clear the flags of episodes that just ended."""
 
   def _episode_success(self, dones, timeouts):
-    """Training outcome scored on the leaderboard board (numpy path).
-
-    The ctrl player WINS an episode by surviving to the time limit without ever
-    violating ``g``. In reach-avoid mode it must ALSO have reached the target at
-    some point; the avoid game has no target set, so survival IS the win.
-    """
-    survived = dones & timeouts & ~self._ever_gneg
-    return survived & self._ever_l if self._is_reach_avoid else survived
+    """Training outcome scored on the league board (numpy path)."""
+    return dones & timeouts & ~self._ever_gneg & self._reach_flag()
 
   def _episode_success_tensor(self, dones, timeouts):
     """Torch twin of :meth:`_episode_success`."""
-    survived = dones & timeouts & ~self._ever_gneg_t
-    return survived & self._ever_l_t if self._is_reach_avoid else survived
+    return dones & timeouts & ~self._ever_gneg_t & self._reach_flag()
 
   # --- opponents ---------------------------------------------------------------
 
@@ -325,8 +349,7 @@ class GameplayPPO(ReachAvoidPPO):
     ever_gneg = getattr(self, "_ever_gneg_t", None)
     if ever_gneg is None or ever_gneg.shape[0] != env.num_envs:
       self._ever_gneg_t = th.zeros(env.num_envs, dtype=th.bool, device=dev)
-      if self._is_reach_avoid:  # no target set in avoid mode
-        self._ever_l_t = th.zeros(env.num_envs, dtype=th.bool, device=dev)
+      self._alloc_reach_flags(self._ever_gneg_t)
     slice_of_env = getattr(self, "_slice_of_env_t", None)
     if slice_of_env is None:
       self._slice_of_env_t = th.as_tensor(self._slice_of_env, device=dev)
@@ -354,12 +377,11 @@ class GameplayPPO(ReachAvoidPPO):
       if not callback.on_step():
         return False
 
-      self._record_step_extras_tensor(buf, l_x)  # l(s); no-op in avoid mode
+      buf.record_extras(l_x)  # the buffer keeps what its operator needs
       buf.add(obs, actions, rewards, episode_starts,
               values.flatten(), log_probs)
 
-      if self._is_reach_avoid:
-        self._ever_l_t |= l_x >= 0.0
+      self._note_reach(l_x)
       self._ever_gneg_t |= rewards < 0.0
       if self._leaderboard is not None and bool(dones.any()):
         d_b = dones.bool()
@@ -376,9 +398,7 @@ class GameplayPPO(ReachAvoidPPO):
         else:
           self._leaderboard.ema_score(
             -1, b.shape[1] - 2, float(succ[d_b].float().mean()))
-        if self._is_reach_avoid:
-          self._ever_l_t = th.where(d_b, th.zeros_like(self._ever_l_t),
-                                    self._ever_l_t)
+        self._clear_reach(d_b)
         self._ever_gneg_t = th.where(d_b, th.zeros_like(self._ever_gneg_t),
                                      self._ever_gneg_t)
 
@@ -408,8 +428,8 @@ class GameplayPPO(ReachAvoidPPO):
   ) -> bool:
     """Two-player rollout: both actions computed each step, env receives the
     concatenation, only the ACTIVE player's data is stored (in its buffer)."""
-    # This override does not call the SafetyPPO base, so anneal gamma here; the
-    # helper updates both the ctrl and dstb rollout buffers (idempotent).
+    # This override does not call the AbstractPPO1P loop, so anneal gamma here;
+    # the helper updates both the ctrl and dstb rollout buffers (idempotent).
     self._apply_gamma_anneal()
     if self._tensor_path:
       return self._collect_rollouts_tensor(env, callback, rollout_buffer,
@@ -418,9 +438,7 @@ class GameplayPPO(ReachAvoidPPO):
     phase = self._phase()
     active_policy = self.dstb_policy if phase == "dstb" else self.policy
     passive_policy = self.policy if phase == "dstb" else self.dstb_policy
-    buf: SafetyRolloutBuffer = (
-      self.dstb_rollout_buffer if phase == "dstb" else self.rollout_buffer
-    )
+    buf = self.dstb_rollout_buffer if phase == "dstb" else self.rollout_buffer
 
     assert self._last_obs is not None
     active_policy.set_training_mode(False)
@@ -461,7 +479,7 @@ class GameplayPPO(ReachAvoidPPO):
       n_steps += 1
 
       # Timeout bootstrap (ACTIVE player's value fn) — DISABLED by default:
-      # the reward is the physical margin g(s) (see SafetyPPO docstring).
+      # the reward is the physical margin g(s) (see the AbstractPPO docstring).
       if self.bootstrap_on_timeout:
         for idx, done in enumerate(dones):
           if (
@@ -476,18 +494,14 @@ class GameplayPPO(ReachAvoidPPO):
               terminal_value = active_policy.predict_values(terminal_obs)[0]
             rewards[idx] += self.gamma * terminal_value
 
-      self._record_step_extras(buf, infos)  # l(s); no-op in avoid mode
+      buf.record_extras(infos)  # the buffer keeps what its operator needs
       buf.add(
         self._last_obs, actions, rewards,
         self._last_episode_starts, values, log_probs,
       )
 
-      # episode flags -> leaderboard board (training outcomes)
-      if self._is_reach_avoid:
-        l_now = np.array(
-          [float(info.get("l_x", 0.0)) for info in infos], dtype=np.float32
-        )
-        self._ever_l |= l_now >= 0.0
+      # episode flags -> league board (training outcomes)
+      self._note_reach(infos)
       self._ever_gneg |= rewards < 0.0
       if self._leaderboard is not None and dones.any():
         timeouts = np.array(
@@ -507,8 +521,7 @@ class GameplayPPO(ReachAvoidPPO):
           self._leaderboard.ema_score(
             -1, b.shape[1] - 2, float(succ[dones].mean())
           )
-        if self._is_reach_avoid:
-          self._ever_l[dones] = False
+        self._clear_reach(dones)
         self._ever_gneg[dones] = False
 
       self._last_obs = new_obs
@@ -535,7 +548,7 @@ class GameplayPPO(ReachAvoidPPO):
       update_learning_rate(
         optimizers if not isinstance(optimizers, list) else optimizers[0],
         self._dstb_lr)
-      self.logger.record("isaacs/lr_dstb", self._dstb_lr)
+      self.logger.record("game/lr_dstb", self._dstb_lr)
 
   def train(self) -> None:
     phase = self._phase()
@@ -556,7 +569,7 @@ class GameplayPPO(ReachAvoidPPO):
       finally:
         if self.adaptive_lr:
           self._adaptive_lr_dstb = float(self._adaptive_lr)
-          self.logger.record("isaacs/lr_dstb", self._adaptive_lr_dstb)
+          self.logger.record("game/lr_dstb", self._adaptive_lr_dstb)
         self.policy, self.rollout_buffer = ctrl_policy, ctrl_buf
         self.ent_coef = ctrl_ent
     else:
@@ -565,11 +578,11 @@ class GameplayPPO(ReachAvoidPPO):
       super().train()
       if self.adaptive_lr:
         self._adaptive_lr_ctrl = float(self._adaptive_lr)
-        self.logger.record("isaacs/lr_ctrl", self._adaptive_lr_ctrl)
+        self.logger.record("game/lr_ctrl", self._adaptive_lr_ctrl)
 
     self._rollouts_done += 1
-    self.logger.record("isaacs/phase_is_dstb", float(phase == "dstb"))
-    self.logger.record("isaacs/rollouts_done", self._rollouts_done)
+    self.logger.record("game/phase_is_dstb", float(phase == "dstb"))
+    self.logger.record("game/rollouts_done", self._rollouts_done)
 
     # snapshot + prune every N full cycles (after pretrain)
     if (
@@ -582,7 +595,7 @@ class GameplayPPO(ReachAvoidPPO):
         self.num_timesteps, self.policy, self.dstb_policy
       )
       self.logger.record(
-        "isaacs/archived_dstb", float(len(self._leaderboard.dstb_steps))
+        "game/archived_dstb", float(len(self._leaderboard.dstb_steps))
       )
 
   # --- persistence ---------------------------------------------------------------
@@ -598,28 +611,37 @@ class GameplayPPO(ReachAvoidPPO):
     return state_dicts, tensors
 
 
-class IsaacsPPO(GameplayPPO):
-  """Two-player on-policy AVOID game — ISAACS proper (Hsu, Nguyen, Fisac 2022,
-  eq. 7), with leaderboard opponents.
+# ----------------------------------------------------------------- the modes
 
-  ``V(s) = (1-γ)·g + γ·max_ctrl min_dstb min(g, V')``: the robust-invariance
-  value under a worst-case disturbance. No target set, no ``l`` — the paper has
-  neither, so ``info["l_x"]`` is never read and the leaderboard scores an
-  episode a WIN when the ctrl player survives to the time limit without ever
-  violating ``g``.
+class SafetyPPO2P(AbstractPPO2P):
+  """Two-player on-policy **avoid** game — ISAACS proper (Hsu, Nguyen, Fisac
+  2022, eq. 7), with league opponents::
 
-  This is the class to use for an adversarial *avoid* task (e.g. "stay standing
-  against a worst-case force"). Do NOT emulate it by giving :class:`GameplayPPO`
-  a degenerate ``l``: no ``l`` reduces the reach-avoid operator to avoid
-  (:mod:`safety_sb3.backups` proves the two conditions are contradictory), and
-  the constant-``l`` trick that appeared to work before v0.2.0 relied on a bug
-  in the reach-avoid anchor.
+      V(s) = (1-γ)·g + γ·max_ctrl min_dstb min(g, V')
 
-  Everything else — the phase machine, slice opponents, per-player LR/entropy,
-  persistence — is inherited unchanged; only the rollout buffers (which carry
-  the backup in the PPO family) and the ``l``-plumbing differ.
+  the robust-invariance value under a worst-case disturbance. No target set, no
+  ``l`` — the paper has neither, so ``info["l_x"]`` is never read and the league
+  scores an episode a WIN when the ctrl player survives to the time limit without
+  ever violating ``g``.
+
+  This is the class for an adversarial *avoid* task ("stay standing against a
+  worst-case force"). Do NOT emulate it by giving :class:`ReachAvoidPPO2P` a
+  degenerate ``l``: no ``l`` reduces the reach-avoid operator to avoid
+  (:mod:`safety_sb3.backups` proves the two conditions are contradictory).
   """
 
-  numpy_rollout_buffer_class = SafetyRolloutBuffer
-  tensor_rollout_buffer_class = TensorSafetyRolloutBuffer
   _MODE = backups.AVOID
+
+
+class ReachAvoidPPO2P(_ReachAvoidPlumbing, AbstractPPO2P):
+  """Two-player on-policy **reach-avoid** game — Gameplay Filters (Hsu et al.
+  2024, eq. 6a), which extends ISAACS to reach-avoid: anchor ``min(l, g)``.
+
+  Needs a target margin ``l`` (``info["l_x"]`` on the numpy path,
+  ``step_tensor``'s ``l_x`` on the GPU-resident path). The league scores an
+  episode a ctrl WIN only if the controller both survived to the time limit and
+  reached the target. For a two-player *avoid* game (no target set) use
+  :class:`SafetyPPO2P`.
+  """
+
+  _MODE = backups.REACH_AVOID

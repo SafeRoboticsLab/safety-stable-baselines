@@ -1,9 +1,19 @@
-"""Custom SB3 policy for ISAACS (two-player reach-avoid).
+"""Policies. Currently one: the two-player SAC policy.
 
-`IsaacsPolicy` subclasses SB3's :class:`SACPolicy` so ISAACS stays plug-and-play
-for existing SB3 code: ``model.predict`` / save / load behave normally and return
-the **control** action.  Internally it holds two actors over disjoint sub-action
-spaces and one twin critic over the FULL (concatenated) action:
+:class:`TwoPlayerSACPolicy` is **SAC-only**, and the name says so deliberately.
+It exists because the SAC-family two-player game needs ONE critic over the JOINT
+action ``Q(s, [a_ctrl, a_dstb])`` — so both actors and that shared critic have to
+be built together, inside a single policy object. The PPO-family two-player
+learner has no use for it: PPO's critic is state-only (``V(s)``), so each player
+gets an independent, ordinary single-player policy built over its own action
+sub-space, and :class:`~safety_sb3.ppo_2p.AbstractPPO2P` simply holds two of
+them. Naming this a bare ``TwoPlayerPolicy`` would overclaim.
+
+It subclasses SB3's :class:`SACPolicy` so the two-player learners stay
+plug-and-play for existing SB3 code: ``model.predict`` / save / load behave
+normally and return the **control** action. Internally it holds two actors over
+disjoint sub-action spaces and one twin critic over the FULL (concatenated)
+action:
 
 * ``self.actor``      — control actor (max-player), over the first ``ctrl_action_dim``
   action dims.  This is the deployable safety controller; ``predict`` uses it.
@@ -26,7 +36,7 @@ from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.sac.policies import Actor, SACPolicy
 
 
-class IsaacsPolicy(SACPolicy):
+class TwoPlayerSACPolicy(SACPolicy):
   def __init__(self, *args, ctrl_action_dim: int, **kwargs) -> None:
     # Must be set before super().__init__ → _build().
     self.ctrl_action_dim = int(ctrl_action_dim)

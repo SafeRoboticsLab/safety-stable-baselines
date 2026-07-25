@@ -14,8 +14,9 @@ eval env and records three scalars to the SB3 logger (which syncs to wandb):
 The definitions mirror the reference audit target ``safe_adaptation_dev``
 (``utils/eval.py`` ``evaluate_zero_sum``: ``safe_rate = mean(results != -1)``,
 ``ra_rate = mean(results == 1)``; result codes success=1 / failure=-1 /
-timeout=0) and the leaderboard eval in :mod:`safety_sb3.isaacs`
-(``_eval_pair_vec``: safe = never ``g < 0``, reached = ever ``l_x >= 0``).
+timeout=0) and the league eval in :mod:`safety_sb3.leaderboard`
+(:class:`~safety_sb3.leaderboard.LeagueEvaluator`: safe = never ``g < 0``,
+reached = ever ``l_x >= 0``).
 
 Rollout accounting is parallel: the eval env runs ``num_envs`` episodes at once,
 we track each env's FIRST episode (safe until its first ``g < 0``, reached if it
@@ -177,7 +178,8 @@ class SafeSuccessRateEvalCallback(BaseCallback):
 
     Single-player: the control actor's output. Two-player (has ``dstb_actor``):
     the control + disturbance actors composed into the env's
-    ``ctrl_dim + dstb_dim`` action, mirroring ``isaacs._tensor_policy_actions``.
+    ``ctrl_dim + dstb_dim`` action, mirroring
+    ``sac_2p.AbstractSAC2P._tensor_policy_actions``.
     Actors output in ``[-1, 1]`` and the tensor env's action space is
     ``[-1, 1]`` (the env clamps), so no unscaling is needed on this path. The
     eval env already returns normalized observations when it is a
@@ -191,7 +193,7 @@ class SafeSuccessRateEvalCallback(BaseCallback):
 
 # ---------------------------------------------------------------------------
 # Self-test: a 1-D double-integrator toy (g = 1 - |x|, l = 0.2 - |x - 0.5|),
-# a short ReachAvoidSAC / GameplaySAC learn() with the callback at a small
+# a short ReachAvoidSAC1P / ReachAvoidSAC2P learn() with the callback at a small
 # eval_freq, asserting eval/safe_rate and eval/success_rate land in [0, 1].
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -203,7 +205,7 @@ if __name__ == "__main__":
 
   sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-  from safety_sb3 import GameplaySAC, ReachAvoidSAC  # noqa: E402
+  from safety_sb3 import ReachAvoidSAC1P, ReachAvoidSAC2P  # noqa: E402
   from safety_sb3.tensor_env import TensorVecEnv  # noqa: E402
 
   DEV = "cpu"
@@ -264,13 +266,13 @@ if __name__ == "__main__":
     assert el > 0, f"ep_len_mean must be positive: {el}"
     print(f"  -> safe_rate={sr:.3f} success_rate={uc:.3f} ep_len_mean={el:.1f} [ok]")
 
-  print("[1] single-player ReachAvoidSAC + reach-avoid eval callback")
+  print("[1] single-player ReachAvoidSAC1P + reach-avoid eval callback")
   env = DoubleIntegratorEnv(num_envs=64)
   eval_env = DoubleIntegratorEnv(num_envs=32)
   cb = SafeSuccessRateEvalCallback(
     eval_env, n_rollouts=50, eval_freq=3_000, reach_avoid=True,
     max_ep_steps=250, verbose=1)
-  model = ReachAvoidSAC(
+  model = ReachAvoidSAC1P(
     "MlpPolicy", env, buffer_size=20_000, batch_size=256, learning_starts=500,
     train_freq=1, gradient_steps=4, gamma=0.95, learning_rate=3e-4,
     policy_kwargs=dict(net_arch=[64, 64]), verbose=0, device=DEV, seed=0,
@@ -287,13 +289,13 @@ if __name__ == "__main__":
               reset_num_timesteps=False)
   _check(cb2, reach_avoid=False)
 
-  print("[3] two-player GameplaySAC (composes ctrl+dstb) + reach-avoid eval")
+  print("[3] two-player ReachAvoidSAC2P (composes ctrl+dstb) + reach-avoid eval")
   tp_env = DoubleIntegratorEnv(num_envs=64, act_dim=2)
   tp_eval = DoubleIntegratorEnv(num_envs=32, act_dim=2)
   cb3 = SafeSuccessRateEvalCallback(
     tp_eval, n_rollouts=40, eval_freq=3_000, reach_avoid=True,
     max_ep_steps=250, verbose=1)
-  tp_model = GameplaySAC(
+  tp_model = ReachAvoidSAC2P(
     "MlpPolicy", tp_env, ctrl_action_dim=1, buffer_size=20_000, batch_size=256,
     learning_starts=500, train_freq=1, gradient_steps=4, gamma=0.95,
     learning_rate=3e-4, policy_kwargs=dict(net_arch=[64, 64]), verbose=0,
