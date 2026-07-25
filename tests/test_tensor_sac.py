@@ -21,7 +21,7 @@ from gymnasium import spaces
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from safety_sb3 import ReachAvoidSAC, SafetySAC  # noqa: E402
+from safety_sb3 import ReachAvoidSAC1P, SafetySAC1P  # noqa: E402
 from safety_sb3.tensor_env import TensorVecEnv  # noqa: E402
 from safety_sb3.tensor_replay import TensorReplayBuffer  # noqa: E402
 
@@ -108,7 +108,7 @@ def _train(algo_cls, steps=150_000, **kw):
 
 
 def test_safety_sac_learns():
-  model, env = _train(SafetySAC)
+  model, env = _train(SafetySAC1P)
   # critic sanity: V(s) = Q(s, pi(s)); safe center >> near-violation state
   s_safe = th.tensor([[0.0, 0.0]], device=DEV)
   s_bad = th.tensor([[0.95, 1.0]], device=DEV)  # at the edge, moving out fast
@@ -117,13 +117,13 @@ def test_safety_sac_learns():
     a_bad = model.actor(s_bad, deterministic=True)
     q_safe = th.cat(model.critic(s_safe, a_safe), dim=1).min()
     q_bad = th.cat(model.critic(s_bad, a_bad), dim=1).min()
-  print(f"[ok] SafetySAC tensor: V(center)={q_safe:+.3f} V(edge,out)={q_bad:+.3f}")
+  print(f"[ok] SafetySAC1P tensor: V(center)={q_safe:+.3f} V(edge,out)={q_bad:+.3f}")
   assert q_safe > 0.5, f"center should be clearly safe, got {q_safe}"
   assert q_safe > q_bad + 0.3, "no safe/unsafe separation in the value"
 
 
 def test_reach_avoid_sac_learns():
-  model, env = _train(ReachAvoidSAC)
+  model, env = _train(ReachAvoidSAC1P)
   # RA value: parked AT the target (x=0.5) satisfied; far from it but safe -> ~0;
   # near the avoid boundary -> negative-ish
   s_on = th.tensor([[0.5, 0.0]], device=DEV)
@@ -133,7 +133,7 @@ def test_reach_avoid_sac_learns():
                   dim=1).min()
     q_off = th.cat(model.critic(s_off, model.actor(s_off, deterministic=True)),
                    dim=1).min()
-  print(f"[ok] ReachAvoidSAC tensor: V(target)={q_on:+.3f} V(edge,out)={q_off:+.3f}")
+  print(f"[ok] ReachAvoidSAC1P tensor: V(target)={q_on:+.3f} V(edge,out)={q_off:+.3f}")
   assert q_on > 0.05, f"target state should have RA value > 0, got {q_on}"
   assert q_on > q_off + 0.2, "no target/boundary separation in the RA value"
   # behavior: reach-avoid is a REACH-ONCE objective (touching l > 0 once
@@ -178,7 +178,7 @@ class TwoPlayerDoubleIntegratorEnv(TensorVecEnv):
   """Two-player double integrator: ctrl pushes, a bounded dstb perturbs.
 
   Action = ``[a_ctrl, a_dstb]`` (a ``ctrl_dim + dstb_dim`` = 2-D Box), the shape
-  GameplaySAC / IsaacsSAC must compose on the tensor collect. Same g/l as the
+  ReachAvoidSAC2P / SafetySAC2P must compose on the tensor collect. Same g/l as the
   single-player env, plus the disturbance term in the dynamics.
   """
 
@@ -243,29 +243,29 @@ def _two_player_q(model, s):
     return th.cat(model.critic(s, th.cat([c, d], dim=1)), dim=1).min()
 
 
-def test_gameplay_sac_tensor_learns():
+def test_reach_avoid_sac_2p_tensor_learns():
   """Two-player REACH-AVOID on the tensor path. The hard claim is that the
   collect COMPOSES ctrl+dstb (without it the run crashes on the action-dim
   mismatch) and stores the full action; plus a lenient value-structure check."""
-  model, env = _train_two_player(__import__("safety_sb3").GameplaySAC)
+  model, env = _train_two_player(__import__("safety_sb3").ReachAvoidSAC2P)
   # composition proof: the replay stores the FULL 2-D [ctrl, dstb] action.
   s = model.replay_buffer.sample(64)
   assert s.actions.shape[1] == 2, \
     f"replay must store composed ctrl+dstb action, got dim {s.actions.shape[1]}"
   q_on = _two_player_q(model, th.tensor([[0.5, 0.0]], device=DEV))   # at target
   q_off = _two_player_q(model, th.tensor([[0.95, 1.0]], device=DEV))  # edge, out
-  print(f"[ok] GameplaySAC tensor: V(target)={q_on:+.3f} V(edge,out)={q_off:+.3f}")
+  print(f"[ok] ReachAvoidSAC2P tensor: V(target)={q_on:+.3f} V(edge,out)={q_off:+.3f}")
   assert q_on > q_off + 0.1, "no target/boundary separation in the RA value"
 
 
-def test_isaacs_sac_tensor_learns():
+def test_safety_sac_2p_tensor_learns():
   """Two-player AVOID (ISAACS proper) on the tensor path."""
-  model, env = _train_two_player(__import__("safety_sb3").IsaacsSAC)
+  model, env = _train_two_player(__import__("safety_sb3").SafetySAC2P)
   s = model.replay_buffer.sample(64)
   assert s.actions.shape[1] == 2
   q_safe = _two_player_q(model, th.tensor([[0.0, 0.0]], device=DEV))
   q_bad = _two_player_q(model, th.tensor([[0.95, 1.0]], device=DEV))
-  print(f"[ok] IsaacsSAC tensor: V(center)={q_safe:+.3f} V(edge,out)={q_bad:+.3f}")
+  print(f"[ok] SafetySAC2P tensor: V(center)={q_safe:+.3f} V(edge,out)={q_bad:+.3f}")
   assert q_safe > q_bad + 0.1, "no safe/unsafe separation in the avoid value"
 
 
@@ -274,6 +274,6 @@ if __name__ == "__main__":
   test_buffer_semantics()
   test_safety_sac_learns()
   test_reach_avoid_sac_learns()
-  test_gameplay_sac_tensor_learns()
-  test_isaacs_sac_tensor_learns()
+  test_reach_avoid_sac_2p_tensor_learns()
+  test_safety_sac_2p_tensor_learns()
   print("ALL TENSOR-SAC TESTS PASSED")

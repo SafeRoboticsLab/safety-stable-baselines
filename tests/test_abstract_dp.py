@@ -3,11 +3,11 @@
 Pins the properties the SAC/DQN de-duplication is supposed to buy:
 
   * every learner's TD target comes from ``safety_sb3.backups`` -- including
-    ``SafetyDQN``, which used to inline its own (algebraically identical) avoid
+    ``SafetyDQN1P``, which used to inline its own (algebraically identical) avoid
     backup, and the cumulative (standard RL) operator, which makes plain
     sum-of-rewards RL a mode of this library rather than a fork of it;
-  * ``SafetySAC`` / ``ReachAvoidSAC`` are ``_MODE`` specializations of ONE
-    ``AbstractSAC.train()``. The hand-copied reach-avoid ``train()`` they
+  * the single-player SAC learners are ``_MODE`` specializations of ONE
+    ``AbstractSAC1P.train()``. The hand-copied reach-avoid ``train()`` they
     replace had silently dropped the ``min_alpha``/``max_alpha`` clamp -- see
     ``test_reach_avoid_sac_clamps_alpha``, the regression guard for that drift;
   * the mode is selectable per instance (``mode=``), not only per class.
@@ -18,10 +18,12 @@ import gymnasium as gym
 import numpy as np
 import torch as th
 
-from safety_sb3 import (AbstractSAC, ReachAvoidSAC, SafetyDQN, SafetySAC,
-                        backups)
-from safety_sb3.isaacs_buffers import ReachAvoidReplayBuffer
+from safety_sb3 import (AbstractSAC1P, CumulativeSAC1P, ReachAvoidSAC1P,
+                        SafetyDQN1P, SafetySAC1P, backups)
+from safety_sb3.buffers_replay import ReachAvoidReplayBuffer
 from safety_sb3.sac_base import AbstractSAC as _AbstractSAC
+from safety_sb3.sac_1p import AbstractSAC1P as _AbstractSAC1P
+from safety_sb3.sac_2p import AbstractSAC2P as _AbstractSAC2P
 
 DEV = "cpu"
 
@@ -120,7 +122,7 @@ def test_cumulative_is_not_a_safety_operator():
 # --- DQN now routes through backups -----------------------------------------
 
 def test_dqn_avoid_backup_matches_the_old_inline_algebra():
-  """SafetyDQN used to inline ``(1 - g*nt)*gs + g*nt*min(gs, V')``."""
+  """SafetyDQN1P used to inline ``(1 - g*nt)*gs + g*nt*min(gs, V')``."""
   rng = np.random.default_rng(0)
   gs, vn = rng.normal(size=256), rng.normal(size=256)
   nt = (rng.random(256) > 0.3).astype(float)
@@ -131,15 +133,15 @@ def test_dqn_avoid_backup_matches_the_old_inline_algebra():
 
 
 def test_dqn_modes():
-  assert SafetyDQN._MODE == backups.AVOID
-  m = SafetyDQN("MlpPolicy", _ToyDiscrete(), seed=0, device=DEV,
+  assert SafetyDQN1P._MODE == backups.AVOID
+  m = SafetyDQN1P("MlpPolicy", _ToyDiscrete(), seed=0, device=DEV,
                 learning_starts=32, batch_size=16, train_freq=1,
                 buffer_size=1000, policy_kwargs=dict(net_arch=[16, 16]),
                 mode=backups.CUMULATIVE)
   assert m._MODE == backups.CUMULATIVE
   m.learn(total_timesteps=200, log_interval=1000)
   try:
-    SafetyDQN("MlpPolicy", _ToyDiscrete(), mode=backups.REACH_AVOID, device=DEV)
+    SafetyDQN1P("MlpPolicy", _ToyDiscrete(), mode=backups.REACH_AVOID, device=DEV)
     raise AssertionError("expected ValueError (no l in the DQN buffer)")
   except ValueError:
     pass
@@ -148,24 +150,45 @@ def test_dqn_modes():
 # --- one train(), specialized by _MODE --------------------------------------
 
 def test_sac_family_shares_one_train():
-  """The de-duplication itself: no SAC 1P subclass owns a train() body."""
-  for cls in (SafetySAC, ReachAvoidSAC):
-    assert issubclass(cls, _AbstractSAC), cls
-    assert cls.train is _AbstractSAC.train, f"{cls.__name__} re-implements train()"
-  assert SafetySAC._MODE == backups.AVOID
-  assert ReachAvoidSAC._MODE == backups.REACH_AVOID
+  """The de-duplication itself: no concrete SAC learner owns a train() body.
+
+  Every single-player mode gets ``AbstractSAC1P.train`` verbatim. The mode is a
+  class attribute, never a fork of the loop.
+  """
+  for cls in (SafetySAC1P, ReachAvoidSAC1P, CumulativeSAC1P):
+    assert issubclass(cls, _AbstractSAC1P), cls
+    assert cls.train is _AbstractSAC1P.train, f"{cls.__name__} re-implements train()"
+  assert SafetySAC1P._MODE == backups.AVOID
+  assert ReachAvoidSAC1P._MODE == backups.REACH_AVOID
+  assert CumulativeSAC1P._MODE == backups.CUMULATIVE
+
+
+def test_train_lives_on_the_players_axis_not_the_shared_base():
+  """v0.4.0 structure: AbstractSAC holds everything the two player counts
+  SHARE and deliberately no train(); the 1P and 2P loops are siblings under it,
+  not one derived from the other."""
+  # the shared base defines train() only to REFUSE -- never to compute
+  import pytest
+  m = object.__new__(_AbstractSAC)
+  with pytest.raises(NotImplementedError, match="no update loop"):
+    m.train(1, 1)
+  for loop in (_AbstractSAC1P, _AbstractSAC2P):
+    assert issubclass(loop, _AbstractSAC), loop
+    assert "train" in vars(loop), loop
+  assert not issubclass(_AbstractSAC2P, _AbstractSAC1P)
+  assert not issubclass(_AbstractSAC1P, _AbstractSAC2P)
 
 
 def test_bellman_target_dispatches_on_mode():
   """_bellman_target is exactly backups.target for the instance's mode."""
-  m = _sac(ReachAvoidSAC)
+  m = _sac(ReachAvoidSAC1P)
   rd = m.replay_buffer.sample(8)
   vn = th.randn(8, 1)
   assert th.allclose(
     m._bellman_target(rd, vn),
     backups.reach_avoid_target(rd.rewards, rd.l_x, vn, 1.0 - rd.dones,
                                m.gamma, m.terminal_type))
-  ms = _sac(SafetySAC)
+  ms = _sac(SafetySAC1P)
   rds = ms.replay_buffer.sample(8)
   assert th.allclose(
     ms._bellman_target(rds, vn),
@@ -173,7 +196,7 @@ def test_bellman_target_dispatches_on_mode():
 
 
 def test_reach_avoid_sac_clamps_alpha():
-  """REGRESSION: the hand-copied ReachAvoidSAC.train() omitted
+  """REGRESSION: the hand-copied ReachAvoidSAC1P.train() omitted
   _clamp_entropy_temps(), so min_alpha/max_alpha silently did not apply on the
   reach-avoid path. One shared train() makes that unrepresentable.
 
@@ -181,7 +204,7 @@ def test_reach_avoid_sac_clamps_alpha():
   passes even unclamped (pre-refactor it reached 0.947 by step 300, still
   inside the window, but 0.763 -- clearly below the floor -- by step 1500).
   """
-  for cls in (SafetySAC, ReachAvoidSAC):
+  for cls in (SafetySAC1P, ReachAvoidSAC1P):
     m = _sac(cls, min_alpha=0.9, max_alpha=0.95, steps=1500)
     alpha = float(th.exp(m.log_ent_coef.detach()))
     assert 0.9 - 1e-6 <= alpha <= 0.95 + 1e-6, (cls.__name__, alpha)
@@ -191,7 +214,7 @@ def test_reach_avoid_sac_clamps_alpha():
 
 def test_mode_selectable_at_init():
   # avoid class asked for reach-avoid -> gets the l-carrying buffer + RA target
-  m = _sac(SafetySAC, mode=backups.REACH_AVOID)
+  m = _sac(SafetySAC1P, mode=backups.REACH_AVOID)
   assert m._MODE == backups.REACH_AVOID
   assert isinstance(m.replay_buffer, ReachAvoidReplayBuffer)
   assert m._tensor_store_l
@@ -202,9 +225,9 @@ def test_mode_selectable_at_init():
     backups.reach_avoid_target(rd.rewards, rd.l_x, vn, 1.0 - rd.dones,
                                m.gamma, m.terminal_type))
   # class default still wins when nothing is passed
-  assert _sac(SafetySAC)._MODE == backups.AVOID
+  assert _sac(SafetySAC1P)._MODE == backups.AVOID
   try:
-    _sac(SafetySAC, mode="bogus")
+    _sac(SafetySAC1P, mode="bogus")
     raise AssertionError("expected ValueError")
   except ValueError:
     pass
@@ -215,7 +238,7 @@ def test_cumulative_rollout_buffer_is_sb3_gae():
   in CUMULATIVE mode the loop reduces exactly to stock SB3 GAE."""
   from stable_baselines3.common.buffers import RolloutBuffer
 
-  from safety_sb3.safety_buffers import SafetyRolloutBuffer
+  from safety_sb3.buffers_rollout import SafetyRolloutBuffer
 
   T, gamma, lam = 12, 0.95, 0.9
   rng = np.random.default_rng(0)
@@ -247,7 +270,7 @@ def test_cumulative_rollout_buffer_is_sb3_gae():
 
 def test_cumulative_sac_trains():
   """Plain reward-maximizing SAC, same code path, no safety semantics."""
-  m = _sac(AbstractSAC, env=_ToyReward(), mode=backups.CUMULATIVE, steps=600)
+  m = _sac(AbstractSAC1P, env=_ToyReward(), mode=backups.CUMULATIVE, steps=600)
   assert m._MODE == backups.CUMULATIVE
   assert not isinstance(m.replay_buffer, ReachAvoidReplayBuffer)
   rd = m.replay_buffer.sample(8)

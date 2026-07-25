@@ -20,8 +20,8 @@ import numpy as np
 import torch as th
 
 from safety_sb3 import backups
-from safety_sb3.safety_buffers import ReachAvoidRolloutBuffer, SafetyRolloutBuffer
-from safety_sb3.tensor_buffers import TensorReachAvoidRolloutBuffer
+from safety_sb3.buffers_rollout import ReachAvoidRolloutBuffer, SafetyRolloutBuffer
+from safety_sb3.buffers_tensor import TensorReachAvoidRolloutBuffer
 
 OBS = gym.spaces.Box(-1, 1, (2,), dtype=np.float32)
 ACT = gym.spaces.Box(-1, 1, (1,), dtype=np.float32)

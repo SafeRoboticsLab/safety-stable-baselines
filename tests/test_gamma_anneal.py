@@ -12,8 +12,8 @@ import gymnasium.spaces as spaces
 import torch as th
 from stable_baselines3.common.callbacks import BaseCallback
 
-from safety_sb3 import (GeometricGammaAnneal, ReachAvoidPPO, ReachAvoidSAC,
-                        SafetyPPO, SafetySAC, make_default_gamma_schedule)
+from safety_sb3 import (GeometricGammaAnneal, ReachAvoidPPO1P, ReachAvoidSAC1P,
+                        SafetyPPO1P, SafetySAC1P, make_default_gamma_schedule)
 from safety_sb3.tensor_env import TensorVecEnv
 
 DEV = "cuda" if th.cuda.is_available() else "cpu"
@@ -96,15 +96,15 @@ class _GammaTrace(BaseCallback):
 # ---------------------------------------------------------------- wiring: on by default
 def test_on_by_default_and_toggle():
   env = DoubleIntegratorEnv(num_envs=8)
-  on = SafetySAC("MlpPolicy", env, gamma=0.99, device=DEV, seed=0,
+  on = SafetySAC1P("MlpPolicy", env, gamma=0.99, device=DEV, seed=0,
                  buffer_size=2000, learning_starts=0)
   assert on._gamma_schedule is not None, "gamma anneal must be ON by default"
-  off = SafetySAC("MlpPolicy", env, gamma=0.99, device=DEV, seed=0,
+  off = SafetySAC1P("MlpPolicy", env, gamma=0.99, device=DEV, seed=0,
                   buffer_size=2000, learning_starts=0, gamma_anneal=False)
   assert off._gamma_schedule is None, "gamma_anneal=False must disable it"
   # custom schedule respected verbatim
   sched = GeometricGammaAnneal(init=0.9, end=0.999)
-  cust = SafetyPPO("MlpPolicy", env, gamma=0.9, n_steps=16, device=DEV,
+  cust = SafetyPPO1P("MlpPolicy", env, gamma=0.9, n_steps=16, device=DEV,
                    gamma_anneal=sched)
   assert cust._gamma_schedule is sched
   print("[ok] default ON; gamma_anneal=False OFF; callable passthrough")
@@ -127,7 +127,7 @@ def _final_and_trace(algo_cls, off_policy):
 
 
 def test_gamma_anneals_during_training_sac():
-  model, trace = _final_and_trace(ReachAvoidSAC, off_policy=True)
+  model, trace = _final_and_trace(ReachAvoidSAC1P, off_policy=True)
   gammas = [g for _, g in trace]
   assert abs(gammas[0] - 0.99) < 5e-3, f"should start ~0.99, got {gammas[0]}"
   assert max(gammas) > 0.999, f"gamma should climb past 0.999, got max {max(gammas)}"
@@ -138,7 +138,7 @@ def test_gamma_anneals_during_training_sac():
 
 
 def test_gamma_anneals_during_training_ppo():
-  model, trace = _final_and_trace(ReachAvoidPPO, off_policy=False)
+  model, trace = _final_and_trace(ReachAvoidPPO1P, off_policy=False)
   gammas = [g for _, g in trace]
   # PPO consumes gamma off the rollout buffer -- verify BOTH tracked and buffer.
   assert abs(gammas[0] - 0.99) < 5e-3, f"should start ~0.99, got {gammas[0]}"

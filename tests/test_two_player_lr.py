@@ -6,7 +6,7 @@ blanket SB3 ``_update_learning_rate`` must NOT collapse them onto one value.
 
 CPU-only, tiny budget -- runs alongside GPU jobs.
 
-  python -m pytest tests/test_isaacs_lr.py -q
+  python -m pytest tests/test_two_player_lr.py -q
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from safety_sb3 import GameplaySAC, IsaacsSAC  # noqa: E402
+from safety_sb3 import ReachAvoidSAC2P, SafetySAC2P  # noqa: E402
 from tests.test_tensor_sac import TwoPlayerDoubleIntegratorEnv  # noqa: E402
 
 DEV = "cpu"
@@ -33,7 +33,7 @@ def _lr(opt) -> float:
   return float(opt.param_groups[0]["lr"])
 
 
-def _make(algo_cls=GameplaySAC, gamma_anneal=False, **kw):
+def _make(algo_cls=ReachAvoidSAC2P, gamma_anneal=False, **kw):
   env = TwoPlayerDoubleIntegratorEnv(num_envs=32, device=DEV)
   model = algo_cls(
     "MlpPolicy", env, ctrl_action_dim=1,
@@ -77,11 +77,11 @@ def test_lrs_survive_train():
   print("[ok] dedicated lrs not collapsed after train()")
 
 
-def test_isaacs_and_gamma_anneal_alpha_reset():
-  """IsaacsSAC (avoid) construction shares the machinery; the gamma-anneal alpha
+def test_two_player_gamma_anneal_alpha_reset():
+  """SafetySAC2P (avoid) construction shares the machinery; the gamma-anneal alpha
   reset must fire without error AND rebuild the entropy optimizers at their
   dedicated lrs (issue 3), not the shared one."""
-  model, _ = _make(algo_cls=IsaacsSAC, gamma_anneal=True)
+  model, _ = _make(algo_cls=SafetySAC2P, gamma_anneal=True)
   _assert_distinct(model)
   # Directly trigger the reset the gamma jump performs.
   model._reset_entropy_temp()
@@ -90,7 +90,7 @@ def test_isaacs_and_gamma_anneal_alpha_reset():
   # And a short run with the default discrete-jump schedule must not error
   # (a jump at 20% fires _on_gamma_jump -> _reset_entropy_temp on the tensor path).
   model.learn(total_timesteps=64 * 8, log_interval=None)
-  print("[ok] IsaacsSAC alpha reset preserves dedicated entropy lrs; jump ran")
+  print("[ok] SafetySAC2P alpha reset preserves dedicated entropy lrs; jump ran")
 
 
 def test_steplr_decays_dedicated_lrs():
@@ -118,6 +118,6 @@ def test_steplr_decays_dedicated_lrs():
 if __name__ == "__main__":
   test_distinct_lrs_at_construction()
   test_lrs_survive_train()
-  test_isaacs_and_gamma_anneal_alpha_reset()
+  test_two_player_gamma_anneal_alpha_reset()
   test_steplr_decays_dedicated_lrs()
   print("ALL ISAACS-LR TESTS PASSED")
