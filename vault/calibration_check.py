@@ -19,11 +19,11 @@ from __future__ import annotations
 import argparse
 
 import numpy as np
-from safety_sb3 import SafetySAC
 
 from . import config as C
 from . import contact_margin as CM
 from . import f_cert as F
+from .checkpoints import load_safety_sac
 from .mujoco_plant import MujocoPlant
 
 
@@ -45,7 +45,7 @@ def _q_at(model, x, mu, u, tau_max=C.TAU_MAX):
 
 
 def run(model_path: str, n: int, horizon: int, mu: float, seed: int):
-    model = SafetySAC.load(model_path)
+    model = load_safety_sac(model_path)
     rng = np.random.default_rng(seed)
     plant = MujocoPlant(wheel="cylinder", mu=mu, dt=0.0005, substeps=20, contact_geometry=True)
 

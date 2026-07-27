@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "release_lock_sha256": "c23b3a5c401139c889b5985dad4c6cde1fe6d5a89aea73d07dd5d5d4c979c7d0",
+  "checkpoints": [
+    {
+      "pattern": "balance_safety_sac*",
+      "status": "incompatible",
+      "incompatible_with": "c23b3a5c401139c889b5985dad4c6cde1fe6d5a89aea73d07dd5d5d4c979c7d0",
+      "reason": "trained before the v2.2 camera-inclusive reduced-model release"
+    },
+    {
+      "pattern": "contact_safety_sac_v3*",
+      "status": "incompatible",
+      "incompatible_with": "c23b3a5c401139c889b5985dad4c6cde1fe6d5a89aea73d07dd5d5d4c979c7d0",
+      "reason": "trained before the v2.2 camera-inclusive reduced-model release"
+    },
+    {
+      "pattern": "reach_avoid_safety_sac*",
+      "status": "incompatible",
+      "incompatible_with": "c23b3a5c401139c889b5985dad4c6cde1fe6d5a89aea73d07dd5d5d4c979c7d0",
+      "reason": "trained before the v2.2 camera-inclusive reduced-model release"
+    }
+  ]
+}

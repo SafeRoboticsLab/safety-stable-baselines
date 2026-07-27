@@ -36,7 +36,7 @@ class MujocoPlant:
     """Independent MuJoCo plant. wheel in {'torus','cylinder'}; mu = wheel-ground friction."""
 
     def __init__(self, wheel: str = "torus", mu: float = 1.0, dt: float = 0.001,
-                 substeps: int | None = None, tube_radius: float = 0.02,
+                 substeps: int | None = None,
                  solref: tuple = (0.02, 1.0), margin: float = 0.0,
                  imu_pos=None, imu_quat=None, contact_geometry: bool = False,
                  xml_override: str | None = None):
@@ -50,7 +50,7 @@ class MujocoPlant:
         # Must still define the chassis body + lwheel/rwheel joints + m_left/m_right actuators
         # that the rest of this class assumes.
         xml = xml_override if xml_override is not None else build_mjcf(
-            wheel=wheel, mu=mu, tube_radius=tube_radius, params=self._p,
+            wheel=wheel, mu=mu, params=self._p,
             solref=solref, margin=margin, imu_pos=imu_pos, imu_quat=imu_quat,
             contact_geometry=contact_geometry)
         self._m = mujoco.MjModel.from_xml_string(xml)

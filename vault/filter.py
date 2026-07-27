@@ -16,10 +16,13 @@ domain take the unsafe value. This is the offline/Python reference for the deplo
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from . import config as C
 from . import f_cert as F
+from .model_release import get_model_release
 
 
 def control_grid(n=5):
@@ -55,15 +58,27 @@ class ValueFilter:
 
     # --- value backends ----------------------------------------------------
     @classmethod
-    def from_mlp(cls, models_dir=None, eps=0.0, controls=None):
-        """The conservative deployable V_mlp (matches what the robot would carry)."""
+    def from_mlp(cls, models_dir=None, eps=0.0, controls=None, mode="unladen"):
+        """Load the conservative release MLP or a sidecar-pinned external MLP."""
         import json
         import torch
         from .distill import VNet
-        md = models_dir or C.MODELS
-        cfg = json.loads((md / "v_mlp.json").read_text())
+
+        release = get_model_release()
+        if mode not in ("unladen", "laden"):
+            raise ValueError(f"mode must be 'unladen' or 'laden', got {mode!r}")
+        if models_dir is None:
+            cfg_path = release.artifact_path(f"v_mlp_{mode}_json")
+            weights_path = release.artifact_path(f"v_mlp_{mode}_pt")
+        else:
+            md = Path(models_dir)
+            cfg_path = release.verify_external_artifact(md / "v_mlp.json")
+            weights_path = release.verify_external_artifact(md / "v_mlp.pt")
+        cfg = json.loads(cfg_path.read_text())
         net = VNet(cfg["h"])
-        net.load_state_dict(torch.load(md / "v_mlp.pt"))
+        net.load_state_dict(
+            torch.load(weights_path, map_location="cpu", weights_only=True)
+        )
         net.eval()
         nlo, nhi, delta = np.array(cfg["nlo"]), np.array(cfg["nhi"]), cfg["delta"]
 
@@ -76,15 +91,50 @@ class ValueFilter:
         return cls(value_fn, nlo[:4], nhi[:4], controls=controls, eps=eps)
 
     @classmethod
-    def from_grid(cls, npz=None, eps=0.0, controls=None):
-        """The exact grid V (nearest certified mu slice). Oracle baseline."""
+    def from_grid(cls, npz=None, eps=0.0, controls=None, mode="unladen"):
+        """Load a release grid or a sidecar-pinned legacy grid."""
         from scipy.interpolate import RegularGridInterpolator as RGI
-        d = np.load(npz or C.GRID_NPZ, allow_pickle=True)
-        axes = [np.asarray(a, float) for a in d["axes"]]
-        dims = [len(a) for a in axes]
-        rgis = {m: RGI(axes, d[f"V_mu{int(m * 10)}"].reshape(dims), bounds_error=False, fill_value=None)
-                for m in C.MU_SLICES}
-        slices = np.array(C.MU_SLICES)
+
+        release = get_model_release()
+        if mode not in ("unladen", "laden"):
+            raise ValueError(f"mode must be 'unladen' or 'laden', got {mode!r}")
+        path = (
+            release.artifact_path(f"grid_{mode}")
+            if npz is None
+            else release.verify_external_artifact(npz)
+        )
+        with np.load(path, allow_pickle=True) as data:
+            axes = [np.asarray(axis, float) for axis in data["axes"]]
+            dims = [len(axis) for axis in axes]
+            slices = (
+                np.asarray(data["mus"], float)
+                if "mus" in data.files
+                else np.asarray(C.MU_SLICES, float)
+            )
+            values = {}
+            for mu in slices:
+                release_key = f"V_{float(mu):.1f}"
+                legacy_key = f"V_mu{int(round(float(mu) * 10))}"
+                key = release_key if release_key in data.files else legacy_key
+                if key not in data.files:
+                    raise ValueError(
+                        f"grid {path} has no value array for mu={float(mu):g}"
+                    )
+                values[float(mu)] = np.asarray(data[key], float).reshape(dims)
+            if npz is None:
+                metadata = tuple(float(data[name]) for name in ("dh", "dm", "bump"))
+                expected = (0.0, 0.0, 0.0) if mode == "unladen" else (0.3, 0.2, 0.0)
+                if not np.allclose(metadata, expected, atol=1e-12, rtol=0.0):
+                    raise ValueError(
+                        f"release grid {path} metadata {metadata} does not match "
+                        f"{mode} expectation {expected}"
+                    )
+        rgis = {
+            mu: RGI(
+                axes, value, bounds_error=False, fill_value=None
+            )
+            for mu, value in values.items()
+        }
 
         def value_fn(X4, mu):
             nearest = float(slices[np.argmin(np.abs(slices - mu))])

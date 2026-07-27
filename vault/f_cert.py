@@ -17,12 +17,17 @@ Margins (safe iff >= 0):
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 import numpy as np
 
 from . import config as C
 from .dynamics import CoupledOpt6
 
-_opt6 = CoupledOpt6()
+@lru_cache(maxsize=1)
+def _opt6() -> CoupledOpt6:
+    """Load the provenance-gated dynamics kernel on first dynamics use."""
+    return CoupledOpt6()
 
 
 def wheel_loads(v, psid):
@@ -39,7 +44,7 @@ def f_cert_step(x, u, mu):
     n_tot, nl, nr = wheel_loads(v, psid)
     u_cap = np.array([np.clip(u[0], -mu * nl * C.WHEEL_R, mu * nl * C.WHEEL_R),
                       np.clip(u[1], -mu * nr * C.WHEEL_R, mu * nr * C.WHEEL_R)])
-    xd = np.asarray(_opt6.f(x, u_cap), float)
+    xd = np.asarray(_opt6().f(x, u_cap), float)
     xd[2] += -C.C_THETA * thd                                            # measured pitch damping
     xd[3] += -((C.YAW_K0 + C.YAW_KC * mu) * np.tanh(psid / C.YAW_EPS)
                + C.YAW_KV * psid) * (n_tot / (C.MASS * C.GRAV))          # measured yaw scrub

@@ -11,24 +11,27 @@ The robot is a 2-wheel balancing robot (the 4-state model's physical embodiment)
 State/sign conventions match f_cert: v fwd along +x, theta = pitch about +y (theta>0
 nose-down/forward), psi about +z; R = Rz(psi)*Ry(theta), roll ~= 0 nominal.
 
-Masses + inertias come from data/composite_params.json (the single source). The chassis yaw
-inertia subtracts the wheels' parallel-axis contribution so the REASSEMBLED whole-robot yaw
-inertia equals the composite value (no double-counting). Roll inertia is not a 4-state param
-(roll is a wheel constraint), so it is reconstructed to a physically-valid value; it does not
-enter the certified planar dynamics. Run this module to print the assembly invariants.
+Masses, inertias, and actuator limits come from the provenance-pinned
+vault-controller release. The chassis yaw inertia subtracts the wheels'
+parallel-axis contribution so the REASSEMBLED whole-robot yaw inertia equals
+the composite value (no double-counting). Roll inertia is not a 4-state param
+(roll is a wheel constraint), so it is reconstructed to a physically-valid
+value; it does not enter the certified planar dynamics. Run this module to
+print the assembly invariants.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from . import config as C
-
-_CP = Path(__file__).resolve().parent / "data" / "composite_params.json"  # vendored single source
+from .model_release import get_model_release
 
 
 def load_params() -> dict:
-    return json.loads(_CP.read_text())
+    """Load structural parameters plus locked controller limits."""
+    release = get_model_release()
+    params = release.load_json("composite_params")
+    params.update(release.load_json("controller_limits"))
+    params.update(release.load_json("model_geometry"))
+    return params
 
 
 #  Non-wheel contact-geometry approximation (contact_geometry=True) --------------------
@@ -56,7 +59,7 @@ _LEG_RADIUS = 0.025                        # m, slender capsule (real leg links 
 # normalizes by the SAME constant so a nominal upright state's margin is ~1.0, not ~0.02 m.
 
 
-def build_mjcf(wheel: str = "torus", mu: float = 1.0, tube_radius: float = 0.02,
+def build_mjcf(wheel: str = "torus", mu: float = 1.0,
                params: dict | None = None, solref: tuple = (0.02, 1.0), margin: float = 0.0,
                imu_pos: tuple | None = None, imu_quat: tuple | None = None,
                contact_geometry: bool = False) -> str:
@@ -76,6 +79,7 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0, tube_radius: float = 0.02,
     """
     p = params or load_params()
     R = p["wheel_radius"]
+    wheel_contact_half_width = p["wheel_contact_half_width"]
     d = p["wheel_sep"] / 2.0
     m_b, h_cm = p["m_b"], p["h_cm"]
     I_pitch, I_yaw = p["I_pitch"], p["I_yaw"]
@@ -93,7 +97,8 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0, tube_radius: float = 0.02,
     if wheel == "torus":
         ext = ('<extension><plugin plugin="mujoco.sdf.torus">'
                f'<instance name="wsdf"><config key="radius1" value="{R}"/>'
-               f'<config key="radius2" value="{tube_radius}"/></instance></plugin></extension>')
+               f'<config key="radius2" value="{wheel_contact_half_width}"/>'
+               '</instance></plugin></extension>')
         asset = '<asset><mesh name="wmesh"><plugin instance="wsdf"/></mesh></asset>'
 
         def wheel_geom(name):
@@ -104,7 +109,8 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0, tube_radius: float = 0.02,
         ext = asset = ""
 
         def wheel_geom(name):
-            return (f'<geom name="{name}" type="cylinder" size="{R} {tube_radius}" euler="90 0 0" '
+            return (f'<geom name="{name}" type="cylinder" '
+                    f'size="{R} {wheel_contact_half_width}" euler="90 0 0" '
                     f'friction="{mu} 0.005 0.0001" condim="6" '
                     f'solref="{solref[0]} {solref[1]}" margin="{margin}"/>')
     else:
@@ -150,7 +156,7 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0, tube_radius: float = 0.02,
   {asset}
   <default>
     <joint damping="0.0"/>
-    <motor ctrlrange="-20 20"/>
+    <motor ctrlrange="-{p['motor_torque_limit']} {p['motor_torque_limit']}"/>
   </default>
   <worldbody>
     <geom name="floor" type="plane" size="0 0 0.05" friction="{mu} 0.005 0.0001" condim="6" solref="{solref[0]} {solref[1]}"/>
@@ -197,5 +203,9 @@ if __name__ == "__main__":
         com_above_axle = float(data.subtree_com[m.body("chassis").id][2] - R)
         i_yaw = sum(float(m.body_inertia[b][2] + m.body_mass[b] * (data.xipos[b][0] ** 2 + data.xipos[b][1] ** 2))
                     for b in range(1, m.nbody))
-        print(f"[{wheel:8s}] total_mass {total:.5f} (param {p['m_b'] + 2 * p['m_wheel']:.5f}) | "
-              f"CoM_above_axle {com_above_axle:.5f} | I_yaw {i_yaw:.5f} (param {p['I_yaw']:.5f})")
+        print(
+            f"[{wheel:8s}] v2.2 total_mass {total:.6f} "
+            f"(param {p['m_b'] + 2 * p['m_wheel']:.6f}) | "
+            f"CoM_above_axle {com_above_axle:.6f} | "
+            f"I_yaw {i_yaw:.6f} (param {p['I_yaw']:.6f})"
+        )

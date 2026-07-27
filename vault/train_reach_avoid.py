@@ -27,10 +27,10 @@ import argparse
 import time
 
 import numpy as np
-from safety_sb3 import SafetySAC
 from stable_baselines3.common.env_checker import check_env
 
 from . import config as C
+from .checkpoints import load_reach_avoid_safety_sac, load_safety_sac
 from .mujoco_env import ContactSafetyEnv
 from .reach_avoid_sac import ReachAvoidSafetySAC
 
@@ -80,14 +80,18 @@ def main():
     avoid_value_model = None
     if args.avoid_value_model:
         print(f"loading frozen avoid-value oracle from {args.avoid_value_model}.zip")
-        avoid_value_model = SafetySAC.load(args.avoid_value_model, device="cpu")
+        avoid_value_model = load_safety_sac(args.avoid_value_model, device="cpu")
 
     if args.resume_from:
         print(f"resuming from {args.resume_from}.zip (critic_warmup_steps={args.critic_warmup_steps})")
-        model = ReachAvoidSafetySAC.load(args.resume_from, env=env, device="cpu",
-                                         avoid_value_model=avoid_value_model,
-                                         saturate_target=args.saturate_target,
-                                         critic_warmup_steps=args.critic_warmup_steps)
+        model = load_reach_avoid_safety_sac(
+            args.resume_from,
+            env=env,
+            device="cpu",
+            avoid_value_model=avoid_value_model,
+            saturate_target=args.saturate_target,
+            critic_warmup_steps=args.critic_warmup_steps,
+        )
     else:
         print(f"ReachAvoidSafetySAC train: {args.steps} steps, gamma={args.gamma}")
         model = ReachAvoidSafetySAC("MlpPolicy", env, learning_rate=3e-4, buffer_size=100_000,

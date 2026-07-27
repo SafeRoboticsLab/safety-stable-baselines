@@ -18,9 +18,9 @@ import json
 import time
 
 import numpy as np
-from safety_sb3 import SafetySAC
 
 from . import config as C
+from .checkpoints import load_safety_sac
 from .mujoco_plant import MujocoPlant
 from .reach_avoid_eval import rollout_outcome
 from .safety_filter import SACFallback
@@ -32,7 +32,7 @@ def run(n: int, horizon: int, mu: float, model_paths: dict[str, str], out_path: 
     theta_grid = np.linspace(*C.DOMAIN_THETA, n)
 
     plant = MujocoPlant(wheel="cylinder", mu=mu, dt=0.0005, substeps=20, contact_geometry=True)
-    fallbacks = {name: SACFallback(SafetySAC.load(path, device="cpu"))
+    fallbacks = {name: SACFallback(load_safety_sac(path, device="cpu"))
                 for name, path in model_paths.items()}
 
     result = {"v_grid": v_grid.tolist(), "theta_grid": theta_grid.tolist(), "n": n,

@@ -28,12 +28,21 @@ cheap function of state). At a terminal transition (not_done=0), the target beco
 min(gs, ls) instead of gs alone, so an episode that ends by successfully reaching the target
 records a positive value rather than just its raw (uncredited) avoid margin.
 
+Jaime's original 2026-07-24 review marker, preserved verbatim:
+
 NOTE (flagged for review, not independently verified against the literature): the exact blend
 weights `(1-gamma)`/`gamma` are carried over unchanged from the avoid-only backup, generalizing
 its structure with the minimal `max(ls, ...)` substitution. This is the most direct, minimal-risk
 generalization preserving the original's contraction properties, but the precise discounted
 reach-avoid Bellman used in any specific paper/derivation should be checked against this if exact
 parity matters.
+
+Resolution (2026-07-27): RSS 2021 Eq. 15 and Theorem 1 were checked
+directly. Under the paper's negative-good to this repository's positive-good
+sign flip, the immediate term is `min(ls, gs)`, which the executable already
+used. `vault/tests/test_drabe_operator.py` on the preserved exploratory branch
+records the tabular contraction and under-approximation witness; the defect
+here was documentation, not the backup implementation.
 
 Three additional, independently-togglable experiment factors (2026-07-24 training-acceleration
 study, see reach_avoid_eval.py / train_reach_avoid.py for how these compose):
@@ -165,6 +174,12 @@ class ReachAvoidSafetySAC(SafetySAC):
                     self.critic_target(replay_data.next_observations, next_actions), dim=1
                 )
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
+                # NOTE (2026-07-27 audit): the entropy-adjusted continuation
+                # below is not the unregularized discounted reach-avoid
+                # operator from the theorem. A sufficiently large entropy
+                # bonus can make the learned critic optimistic. Training
+                # behavior is intentionally unchanged on this model-consumer
+                # branch pending a separately authorized correction.
                 next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
 
                 if self.avoid_value_model is not None:

@@ -28,6 +28,7 @@ import numpy as np
 from . import config as C
 from . import contact_margin as CM
 from . import f_cert as F
+from .checkpoints import load_safety_sac
 from .safety_filter import SACFallback, ValueMonitor, SwitchIntervention, OptimizationIntervention
 from .mujoco_plant import MujocoPlant
 
@@ -91,11 +92,9 @@ def _dry_run(steps: int, mu: float, filter_on: bool, filter_mode: str, gamma: fl
              model_path: str):
     """Headless self-test: scripted ref sequence, no pygame/display. Used to validate the
     control loop wiring without requiring a keyboard/screen (see verification in the plan)."""
-    from safety_sb3 import SafetySAC
-
     plant = MujocoPlant(wheel="cylinder", mu=mu, dt=0.0005, substeps=20, contact_geometry=True)
     ctrl = CCoupledController()
-    model = SafetySAC.load(model_path)
+    model = load_safety_sac(model_path)
     cf = _make_filter(filter_mode, model, gamma, eps)
 
     plant.reset(np.array([0.0, 0.0, 0.0, 0.0]))
@@ -118,11 +117,9 @@ def _dry_run(steps: int, mu: float, filter_on: bool, filter_mode: str, gamma: fl
 
 def _live(mu: float, filter_on: bool, filter_mode: str, gamma: float, eps: float, model_path: str):
     import pygame
-    from safety_sb3 import SafetySAC
-
     plant = MujocoPlant(wheel="cylinder", mu=mu, dt=0.0005, substeps=20, contact_geometry=True)
     ctrl = CCoupledController()
-    model = SafetySAC.load(model_path)
+    model = load_safety_sac(model_path)
     cf = _make_filter(filter_mode, model, gamma, eps)
 
     try:

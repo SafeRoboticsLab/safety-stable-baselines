@@ -1,34 +1,81 @@
-"""Repo-relative paths and shared physical constants / ODD spec for the 4-state
-balance-safety package. Single source: every module imports its constants from here.
-"""
+"""Shared physical constants and ODD spec for the 4-state safety package."""
 from __future__ import annotations
 
-import json
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
+
+from .model_release import get_model_release
 
 PKG = Path(__file__).resolve().parent
 DATA = PKG / "data"
 MODELS = PKG / "models"
-GRID_NPZ = DATA / "grid_reachavoid_odd.npz"
 
-# --- robot parameters (vendored composite_params.json) ---
-_CP = json.loads((DATA / "composite_params.json").read_text())
-MASS = _CP["m_b"] + 2 * _CP["m_wheel"]        # total mass (kg)
-TRACK = _CP["wheel_sep"]                        # wheel separation / track width (m)
-WHEEL_R = _CP["wheel_radius"]                   # wheel radius (m)
-GRAV = 9.81
-COM_H = _CP["h_cm"] + WHEEL_R                   # CoM height above ground (m)
-A_TIP = GRAV * TRACK / (2 * COM_H)             # no-liftoff lateral-accel bound (m/s^2)
+# Model access is deliberately lazy: importing the package remains possible
+# while a controller checkout is changing, but first artifact access still
+# performs the strict byte-lock and per-file hash gates.
+_RELEASE_VALUE_NAMES = frozenset(
+    {
+        "MODEL_RELEASE",
+        "MASS",
+        "TRACK",
+        "WHEEL_R",
+        "GRAV",
+        "COM_H",
+        "A_TIP",
+        "C_THETA",
+        "YAW_K0",
+        "YAW_KC",
+        "YAW_KV",
+        "YAW_EPS",
+        "CONTROLLER_TAU_MAX",
+    }
+)
 
-# --- coupled friction residual fit (vendored) ---
-_FR = json.loads((DATA / "coupled_residual_fit.json").read_text())
-C_THETA = _FR["pitch"]["c0"]                    # pitch damping coefficient
-_Y = _FR["yaw"]
-YAW_K0, YAW_KC, YAW_KV, YAW_EPS = _Y["k0"], _Y["kc"], _Y["kv"], _Y["eps"]
+
+@lru_cache(maxsize=1)
+def _release_values() -> dict[str, Any]:
+    release = get_model_release()
+    composite = release.load_json("composite_params")
+    limits = release.load_json("controller_limits")
+    residual = release.load_json("coupled_residual")
+    mass = composite["m_b"] + 2 * composite["m_wheel"]
+    track = composite["wheel_sep"]
+    wheel_radius = composite["wheel_radius"]
+    gravity = limits["gravity"]
+    com_height = composite["h_cm"] + wheel_radius
+    yaw = residual["yaw"]
+    return {
+        "MODEL_RELEASE": release,
+        "MASS": mass,
+        "TRACK": track,
+        "WHEEL_R": wheel_radius,
+        "GRAV": gravity,
+        "COM_H": com_height,
+        "A_TIP": gravity * track / (2 * com_height),
+        "C_THETA": residual["pitch"]["c0"],
+        "YAW_K0": yaw["k0"],
+        "YAW_KC": yaw["kc"],
+        "YAW_KV": yaw["kv"],
+        "YAW_EPS": yaw["eps"],
+        "CONTROLLER_TAU_MAX": limits["motor_torque_limit"],
+    }
+
+
+def __getattr__(name: str) -> Any:
+    if name in _RELEASE_VALUE_NAMES:
+        return _release_values()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | _RELEASE_VALUE_NAMES)
 
 # --- integration + control ---
 DT = 0.01                                       # control/integration step (s)
 THETA_MAX = 1.2                                 # pitch failure bound (rad)
+# Safety certification was solved over an 8 N*m action set.  The controller
+# release separately preserves a 20 N*m deployed clip pending reconciliation.
 TAU_MAX = 8.0                                   # per-wheel torque limit (N*m)
 
 # --- ODD: the operational envelope we certify ---
@@ -41,7 +88,7 @@ TAU_ROLL_BAR = 4.0                              # roll-wrench bound (N*m)
 
 # --- friction (mu) for the mu-aware value function ---
 MU_RANGE = (0.3, 1.0)
-MU_SLICES = (0.3, 0.6, 1.0)                     # certified slices (grid keys V_mu3 / V_mu6 / V_mu10)
+MU_SLICES = (0.3, 0.6, 1.0)
 
 # --- contact-based failure modes (mujoco_env.py / contact_margin.py), not part of f_cert ---
 SLAM_VEL_MAX = 1.0                              # contact normal speed (m/s) above which = a "slam"

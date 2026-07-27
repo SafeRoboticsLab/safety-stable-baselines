@@ -24,12 +24,12 @@ from __future__ import annotations
 import argparse
 
 import numpy as np
-from safety_sb3 import SafetySAC
 
 from . import config as C
 from . import contact_margin as CM
 from . import f_cert as F
 from . import target_margin as T
+from .checkpoints import load_safety_sac
 from .mujoco_plant import MujocoPlant
 from .reach_avoid_value import realized_value
 from .safety_filter import SACFallback
@@ -84,8 +84,8 @@ def run(n: int, horizon: int, mu: float, seed: int, avoid_only_path: str, reach_
     print(f"sampled {n} initial states from the constraint set (odd_margin>=0, contact_margin>=0)\n")
 
     fallbacks = {
-        "avoid-only": SACFallback(SafetySAC.load(avoid_only_path)),
-        "reach-avoid": SACFallback(SafetySAC.load(reach_avoid_path)),
+        "avoid-only": SACFallback(load_safety_sac(avoid_only_path)),
+        "reach-avoid": SACFallback(load_safety_sac(reach_avoid_path)),
     }
 
     results = {name: {"reached": 0, "safe_no_reach": 0, "failed": 0} for name in fallbacks}
