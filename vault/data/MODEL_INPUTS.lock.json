@@ -246,9 +246,52 @@
       "claim": "grid-node conservatism; not a continuum proof"
     }
   },
+  "int8_deployment": {
+    "status": "complete",
+    "model_version": "v2.2",
+    "artifact_role": "portable integer deployment approximation; not a certificate",
+    "governing_gate": "zero int8-safe nodes where robust-grid value is negative",
+    "scope": "exhaustive grid nodes; not a continuum proof",
+    "f32_int8_ordering": "diagnostic only; both networks are independently gated against the robust-grid oracle",
+    "inputs": {
+      "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
+      "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
+      "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
+      "models/generated/safety/mlp/v_mlp_unladen.json": "d0166ef8329adb548c1f75dee065726fcf374e752d2d1374e16030fd41bbf57e",
+      "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
+      "models/generated/safety/mlp/v_mlp_laden.json": "5ee30e5c80a6e82641193553e5bb944479ca9fb2c0725723615adbabaa461a98",
+      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
+      "models/generated/safety/int8/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111"
+    },
+    "outputs": {
+      "balance_controller/c/include/balance_controller/value_weights_int8.h": "f7188548373e80e2ff1aed181d110cd25a4f082a240b6ea87ee58d96b6345735",
+      "models/generated/safety/int8/QUANTIZATION_GAP.md": "0f8ef76b4c52719cb8dcc425a328a09568689f4c4e465b04fb3897365a3c41e3",
+      "models/generated/safety/int8/QUANTIZATION_GAP.json": "342300d5d596eff7202082383baab246d1008b6bd695fdada9a2dde4a94ba6df",
+      "models/generated/safety/int8/quantization_gap_slices.pdf": "368107d43e0732238b006ea7eaf94fd6631edc48b422763428a93d45ddd38a06"
+    },
+    "commands": [
+      "/home/vault/miniforge3/envs/isaacs/bin/python3 balance_controller/c/tools/export_v_mlp_int8_c.py",
+      "MPLCONFIGDIR=/tmp/vault-mpl-qgap /home/vault/miniforge3/envs/isaacs/bin/python3 models/tools/quantization_gap_report.py",
+      "VAULT_SIMULATOR_ROOT=/home/vault/Documents/vault_simulator/.claude/worktrees/v22-toolchain /home/vault/miniforge3/envs/isaacs/bin/python3 balance_controller/c/test/test_value_int8_parity.py"
+    ],
+    "gates": {
+      "unladen": {
+        "delta": 0.19727363496878472,
+        "false_safe_nodes": 0,
+        "grid_safe_retention_pct": 67.45976736273015
+      },
+      "laden": {
+        "delta": 0.10965233092819135,
+        "false_safe_nodes": 0,
+        "grid_safe_retention_pct": 74.90917408972254
+      }
+    }
+  },
   "release_files": {
     "balance_controller/c/include/balance_controller/bc_safety_params.h": "9e715591fcaa72a31fc7ac3dbcb6572e6059b1fccd613680f2df40766a332509",
     "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a",
+    "balance_controller/c/include/balance_controller/value_weights_int8.h": "f7188548373e80e2ff1aed181d110cd25a4f082a240b6ea87ee58d96b6345735",
+    "balance_controller/c/tools/export_v_mlp_int8_c.py": "5101070ce14932c5b2267ebbfb3b6080ef1aed99b7ea25d01b7c3a2ffe796479",
     "models/generated/mujoco/articulated/articulated_v2_2.xml": "a8b3545e7ad80c4b1a4d8ab3f357fbdd9b49faf761039e5a39f78e3cf7241372",
     "models/generated/mujoco/articulated/generate.py": "cb8cfc7e8a928f7c278a2938c1040934d5c4762a83e2d62ff35a7d1953e8d220",
     "models/generated/mujoco/balance/balance_plant.xml": "cf274a714c176674ec66050da5ba942dfe25ab69ed994bdfb81ac2fb6d233d19",
@@ -267,8 +310,9 @@
     "models/source/urdf/articulated_v2_2/robot.urdf": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09",
     "models/source/urdf/tucked_v2_2/robot.urdf": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "models/tools/export_usd.py": "f1b35867b44d084eb2940cee464f641cf5cfb8705dc6b9d2a4f4b69118836442",
-    "models/tools/verify_model_release.py": "3ab5c90469c100805000f2d02a0e879b2673afa9943dbfea8429778485a634ec",
+    "models/tools/verify_model_release.py": "ac918cecb9a3db511714ef50c0c51b31e0101cbcb8545e0fd20b78dd0f1a0ca2",
     "models/tools/verify_urdf_composite.py": "818eb72133eca52df208a9677ca397a9529ec088fba4dab2765e89afd0305a0a",
+    "models/tools/quantization_gap_report.py": "fb1675a3c846d4a13d6409023e173f1bd13abbf64e7a7a8138581169794ecae8",
     "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
     "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
     "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1",
@@ -280,6 +324,9 @@
     "models/generated/safety/mlp/v_mlp_laden.json": "5ee30e5c80a6e82641193553e5bb944479ca9fb2c0725723615adbabaa461a98",
     "models/generated/safety/int8/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
     "models/generated/safety/int8/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111",
+    "models/generated/safety/int8/QUANTIZATION_GAP.md": "0f8ef76b4c52719cb8dcc425a328a09568689f4c4e465b04fb3897365a3c41e3",
+    "models/generated/safety/int8/QUANTIZATION_GAP.json": "342300d5d596eff7202082383baab246d1008b6bd695fdada9a2dde4a94ba6df",
+    "models/generated/safety/int8/quantization_gap_slices.pdf": "368107d43e0732238b006ea7eaf94fd6631edc48b422763428a93d45ddd38a06",
     "balance_controller/c/include/balance_controller/bc_safety_params.h.v2_1_backup_20260726": "a0c2265c58db1b4283ca3722cee3002e830067e2f46f8c6adcecfec9c681d9f3",
     "balance_controller/c/include/balance_controller/value_weights.h.v2_1_backup_20260726": "de787e32902a32e0c02ac5478d95de0b942a6ef3a1aa624b22e435a7fa6a00ac"
   }
