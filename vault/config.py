@@ -10,6 +10,7 @@ from .model_release import get_model_release
 PKG = Path(__file__).resolve().parent
 DATA = PKG / "data"
 MODELS = PKG / "models"
+GRID_NPZ = DATA / "grid_reachavoid_odd.npz"
 
 # Model access is deliberately lazy: importing the package remains possible
 # while a controller checkout is changing, but first artifact access still

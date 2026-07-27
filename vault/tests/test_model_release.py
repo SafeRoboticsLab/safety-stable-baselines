@@ -183,6 +183,32 @@ def test_external_artifact_requires_matching_model_identity(tmp_path: Path) -> N
         release.verify_external_artifact(artifact)
 
 
+def test_default_and_capability_grids_have_distinct_contracts() -> None:
+    from vault import config as C
+    from vault.filter import ValueFilter
+
+    release = get_model_release()
+    assert C.GRID_NPZ.name == "grid_reachavoid_odd.npz"
+    assert release.verify_external_artifact(C.GRID_NPZ) == C.GRID_NPZ
+
+    odd_filter = ValueFilter.from_grid()
+    capability_filter = ValueFilter.from_capability_grid(mode="unladen")
+    np.testing.assert_allclose(
+        odd_filter.lo,
+        [-0.5, -1.35, -6.0, -3.0],
+        rtol=0.0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        odd_filter.hi,
+        [1.7, 1.35, 6.0, 3.0],
+        rtol=0.0,
+        atol=1e-12,
+    )
+    assert capability_filter.lo[0] == pytest.approx(-6.0)
+    assert capability_filter.hi[0] == pytest.approx(6.0)
+
+
 def test_known_stale_checkpoint_is_quarantined(tmp_path: Path) -> None:
     stale = tmp_path / "balance_safety_sac.zip"
     stale.write_bytes(b"stale")

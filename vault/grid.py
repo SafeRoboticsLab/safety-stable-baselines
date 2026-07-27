@@ -27,6 +27,7 @@ import numpy as np
 
 from . import config as C
 from . import f_cert as F
+from .model_release import get_model_release
 
 # Grid resolution; theta (the failure axis) is finest. Box strictly contains the ODD.
 AXES_FULL = [np.linspace(-0.5, 1.7, 13), np.linspace(-1.35, 1.35, 29),
@@ -124,7 +125,9 @@ def main():
     if not args.smoke and args.mu is None:
         np.savez(C.GRID_NPZ, **{f"V_mu{int(m * 10)}": V for m, V in values.items()},
                  axes=np.array(axes, dtype=object))
+        sidecar = get_model_release().write_external_artifact_sidecar(C.GRID_NPZ)
         print(f"\nsaved -> {C.GRID_NPZ}")
+        print(f"model provenance -> {sidecar}")
     return 0
 
 

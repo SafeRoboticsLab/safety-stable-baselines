@@ -91,18 +91,38 @@ class ValueFilter:
         return cls(value_fn, nlo[:4], nhi[:4], controls=controls, eps=eps)
 
     @classmethod
-    def from_grid(cls, npz=None, eps=0.0, controls=None, mode="unladen"):
-        """Load a release grid or a sidecar-pinned legacy grid."""
-        from scipy.interpolate import RegularGridInterpolator as RGI
+    def from_grid(cls, npz=None, eps=0.0, controls=None):
+        """Load Jaime's ODD reach-avoid grid, regenerated for the v2.2 model."""
+        release = get_model_release()
+        path = C.GRID_NPZ if npz is None else Path(npz)
+        path = release.verify_external_artifact(path)
+        return cls._from_grid_path(path, eps=eps, controls=controls)
 
+    @classmethod
+    def from_capability_grid(cls, mode="unladen", eps=0.0, controls=None):
+        """Explicitly load a controller capability grid.
+
+        Capability grids encode the controller release's tip/capability
+        contract, not Jaime's SSB ODD reach-avoid contract. Keeping this as a
+        separate constructor prevents a model-release update from silently
+        changing the meaning of ``from_grid()``.
+        """
         release = get_model_release()
         if mode not in ("unladen", "laden"):
             raise ValueError(f"mode must be 'unladen' or 'laden', got {mode!r}")
-        path = (
-            release.artifact_path(f"grid_{mode}")
-            if npz is None
-            else release.verify_external_artifact(npz)
+        path = release.artifact_path(f"grid_{mode}")
+        metadata = (0.0, 0.0, 0.0) if mode == "unladen" else (0.3, 0.2, 0.0)
+        return cls._from_grid_path(
+            path, eps=eps, controls=controls, expected_metadata=metadata
         )
+
+    @classmethod
+    def _from_grid_path(
+        cls, path, eps=0.0, controls=None, expected_metadata=None
+    ):
+        """Build a filter from one already provenance-checked grid path."""
+        from scipy.interpolate import RegularGridInterpolator as RGI
+
         with np.load(path, allow_pickle=True) as data:
             axes = [np.asarray(axis, float) for axis in data["axes"]]
             dims = [len(axis) for axis in axes]
@@ -121,13 +141,14 @@ class ValueFilter:
                         f"grid {path} has no value array for mu={float(mu):g}"
                     )
                 values[float(mu)] = np.asarray(data[key], float).reshape(dims)
-            if npz is None:
+            if expected_metadata is not None:
                 metadata = tuple(float(data[name]) for name in ("dh", "dm", "bump"))
-                expected = (0.0, 0.0, 0.0) if mode == "unladen" else (0.3, 0.2, 0.0)
-                if not np.allclose(metadata, expected, atol=1e-12, rtol=0.0):
+                if not np.allclose(
+                    metadata, expected_metadata, atol=1e-12, rtol=0.0
+                ):
                     raise ValueError(
                         f"release grid {path} metadata {metadata} does not match "
-                        f"{mode} expectation {expected}"
+                        f"expectation {expected_metadata}"
                     )
         rgis = {
             mu: RGI(
