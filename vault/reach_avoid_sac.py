@@ -40,9 +40,12 @@ parity matters.
 Resolution (2026-07-27): RSS 2021 Eq. 15 and Theorem 1 were checked
 directly. Under the paper's negative-good to this repository's positive-good
 sign flip, the immediate term is `min(ls, gs)`, which the executable already
-used. `vault/tests/test_drabe_operator.py` on the preserved exploratory branch
-records the tabular contraction and under-approximation witness; the defect
-here was documentation, not the backup implementation.
+used. `vault/tests/test_drabe_operator.py` records the witness: the operator
+reproduces Eq. 15 exactly under the sign flip, contracts at modulus gamma, and
+its fixed point under-approximates the undiscounted reach-avoid set, while the
+optimistic `(1-gamma)*g` variant admits a false-safe trap state. The defect
+here was documentation, not the backup implementation. Separately, see the
+audit note at the entropy-adjusted continuation in `train()`.
 
 Three additional, independently-togglable experiment factors (2026-07-24 training-acceleration
 study, see reach_avoid_eval.py / train_reach_avoid.py for how these compose):
@@ -101,6 +104,27 @@ def _target_margin_torch(next_obs: th.Tensor) -> th.Tensor:
 def _saturate_floor(l: th.Tensor) -> th.Tensor:
     """Smooth floor at -1: identity for l>=0, tanh(l) for l<0. See class docstring."""
     return th.where(l >= 0, l, th.tanh(l))
+
+
+def _drabe_target_torch(
+    gs: th.Tensor,
+    ls: th.Tensor,
+    next_q_values: th.Tensor,
+    dones: th.Tensor,
+    gamma: float,
+) -> th.Tensor:
+    """Positive-good discounted reach-avoid target (RSS 2021 Eq. 15).
+
+    The paper uses negative-good ``l, g, V``. Applying ``L=-l``, ``G=-g``,
+    ``W=-V`` converts its one-step term ``max(l, g)`` to ``min(L, G)`` and its
+    recursive minimisation to the maximisation below. The ``min(ls, gs)``
+    immediate term is what Theorem 1's conservatism rests on; the optimistic
+    ``gs`` variant admits false-safe states (see tests/test_drabe_operator.py).
+    """
+    not_done = 1.0 - dones
+    immediate = th.minimum(gs, ls)
+    continuation = th.minimum(gs, th.maximum(ls, next_q_values))
+    return (1.0 - gamma * not_done) * immediate + gamma * not_done * continuation
 
 
 class ReachAvoidSafetySAC(SafetySAC):
@@ -176,10 +200,21 @@ class ReachAvoidSafetySAC(SafetySAC):
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 # NOTE (2026-07-27 audit): the entropy-adjusted continuation
                 # below is not the unregularized discounted reach-avoid
-                # operator from the theorem. A sufficiently large entropy
-                # bonus can make the learned critic optimistic. Training
-                # behavior is intentionally unchanged on this model-consumer
-                # branch pending a separately authorized correction.
+                # operator of RSS 2021 Eq. 15, so Theorem 1's
+                # under-approximation guarantee does not transfer to the
+                # learned critic. On the canonical trap -- one self-looping
+                # state, constraint margin G=+0.5, target margin L=-0.5, true
+                # undiscounted value -0.5 -- the contaminated fixed point
+                # crosses zero at
+                #     beta* = |L| (1 - gamma) / gamma,
+                # i.e. 5.0e-4 at this file's default gamma=0.999, while SAC's
+                # auto-tuned bonus is orders of magnitude larger. Note the
+                # structure is adverse: raising gamma to tighten the
+                # approximation lowers the bar for breaking it. Inherited from
+                # safety_sb3's avoid-only backup, so it is not specific to the
+                # reach-avoid extension. Training behavior is intentionally
+                # unchanged on this model-consumer branch pending a separately
+                # authorized correction.
                 next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
 
                 if self.avoid_value_model is not None:
@@ -192,13 +227,14 @@ class ReachAvoidSafetySAC(SafetySAC):
                 not_done = 1.0 - replay_data.dones
                 # v_to_go = min(g(s'), max(l(s'), V(s''))) -- the reach-avoid extension; see
                 # module docstring for the avoid-only backup this generalizes.
-                v_to_go = th.minimum(gs, th.maximum(ls, next_q_values))
-                target_q_values = (
-                    1.0 - self.gamma * not_done
-                ) * th.minimum(gs, ls) + self.gamma * not_done * v_to_go
-                # at terminal transitions (not_done=0) this reduces to min(gs, ls): a successful
-                # reach-target termination (gs>=0, ls>=0) now records a positive value, instead of
+                # Extracted to a pure function so the backup is unit-testable
+                # (vault/tests/test_drabe_operator.py); arithmetic unchanged.
+                # At terminal transitions (not_done=0) it reduces to min(gs, ls): a successful
+                # reach-target termination (gs>=0, ls>=0) records a positive value, instead of
                 # the avoid-only backup's plain gs which discarded the reach credit entirely.
+                target_q_values = _drabe_target_torch(
+                    gs, ls, next_q_values, replay_data.dones, self.gamma
+                )
 
             current_q_values = self.critic(replay_data.observations, replay_data.actions)
             critic_loss = 0.5 * sum(
