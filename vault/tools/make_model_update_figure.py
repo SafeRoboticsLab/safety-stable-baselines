@@ -2,9 +2,10 @@
 
 Same solver, same ODD contract, same axes, same friction slices -- only the
 robot model changed. The v2.1 grid is read from git (Jaime's committed grid at
-2c4f73d); the v2.2 grid is pinned at fb40058, before the 2026-07-27 +/-4
-domain widening. This script intentionally does not read the active grid:
-safe-set fractions on different domains are not comparable.
+2c4f73d); the v2.2 grid is pinned at 272406c, where the old-domain v2.2
+regeneration was introduced, before the 2026-07-27 +/-4 domain widening.
+This script intentionally does not read the active grid: safe-set fractions
+on different domains are not comparable.
 
 Run from the repo root:
     PYTHONPATH=$PWD:../vault-controller python -m vault.tools.make_model_update_figure
@@ -27,7 +28,7 @@ from matplotlib.colors import ListedColormap
 
 REPO = Path(__file__).resolve().parents[2]
 V21_REF = "2c4f73d:vault/data/grid_reachavoid_odd.npz"
-V22_REF = "fb40058:vault/data/grid_reachavoid_odd.npz"
+V22_REF = "272406cac12bee123cb1f5b2090a3b3c6fd2c7b9:vault/data/grid_reachavoid_odd.npz"
 OUT = REPO / "vault/docs/model_update_safeset_v2_1_to_v2_2.pdf"
 
 SAFE, UNSAFE = "#2e9e4f", "#d1443c"
@@ -123,7 +124,7 @@ def main() -> int:
         ax.tick_params(labelsize=7)
 
     fig.text(L, 0.075,
-             "Slices at $\\dot\\theta=\\dot\\psi=0$. Grids pinned at 2c4f73d and fb40058 on the "
+             "Slices at $\\dot\\theta=\\dot\\psi=0$. Grids pinned at 2c4f73d and 272406c on the "
              "same historical contract; not the active +/-4 domain.\nReproduce: "
              "python vault/tools/make_model_update_figure.py",
              fontsize=7.4, color="#666666", va="top", linespacing=1.5)
