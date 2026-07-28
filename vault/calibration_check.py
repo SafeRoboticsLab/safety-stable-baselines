@@ -27,13 +27,15 @@ from .checkpoints import load_safety_sac
 from .mujoco_plant import MujocoPlant
 
 
-def _fallback_action(model, x, mu, tau_max=C.TAU_MAX):
+def _fallback_action(model, x, mu, tau_max=None):
+    tau_max = C.TAU_MAX if tau_max is None else tau_max
     obs5 = np.append(np.asarray(x, np.float32), np.float32(mu))
     a, _ = model.predict(obs5, deterministic=True)
     return np.clip(a, -1.0, 1.0) * tau_max
 
 
-def _q_at(model, x, mu, u, tau_max=C.TAU_MAX):
+def _q_at(model, x, mu, u, tau_max=None):
+    tau_max = C.TAU_MAX if tau_max is None else tau_max
     import torch
     obs5 = np.append(np.asarray(x, np.float32), np.float32(mu))[None]
     u_norm = np.clip(np.asarray(u, float) / tau_max, -1.0, 1.0).astype(np.float32)[None]

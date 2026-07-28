@@ -54,15 +54,24 @@ from .mujoco_plant import MujocoPlant
 class ContactSafetyEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, mu_range=C.MU_RANGE, tau_max=C.TAU_MAX, max_steps=200,
+    def __init__(self, mu_range=None, tau_max=None, max_steps=200,
                  wheel="cylinder", seed=None, reach_avoid=False):
         super().__init__()
-        self.mu_range = mu_range
-        self.tau_max = tau_max
+        self.mu_range = C.MU_RANGE if mu_range is None else mu_range
+        self.tau_max = C.TAU_MAX if tau_max is None else tau_max
         self.max_steps = max_steps
         self.wheel = wheel
         self.reach_avoid = reach_avoid
-        hi = np.array([2.0, 1.5, 8.0, 3.0, 1.0], np.float32)
+        hi = np.array(
+            [
+                max(abs(x) for x in C.DOMAIN_V),
+                max(abs(x) for x in C.DOMAIN_THETA),
+                max(abs(x) for x in C.DOMAIN_THETA_DOT),
+                max(abs(x) for x in C.DOMAIN_PSI_DOT),
+                C.MU_RANGE[1],
+            ],
+            np.float32,
+        )
         self.observation_space = spaces.Box(-hi, hi, dtype=np.float32)
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
         self._rng = np.random.default_rng(seed)

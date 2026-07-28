@@ -64,9 +64,9 @@ class Fallback:
 class SACFallback(Fallback):
     """A trained SafetySAC/ReachAvoidSafetySAC actor used as the fallback pi*."""
 
-    def __init__(self, model, tau_max: float = C.TAU_MAX):
+    def __init__(self, model, tau_max: float | None = None):
         self.model = model
-        self.tau_max = tau_max
+        self.tau_max = C.TAU_MAX if tau_max is None else tau_max
 
     def action(self, x, mu) -> np.ndarray:
         obs5 = np.append(np.asarray(x, np.float32), np.float32(mu))
@@ -103,9 +103,9 @@ class Monitor:
 class ValueMonitor(Monitor):
     """Value-based monitor: queries a trained critic Q(x,u) directly (no rollout)."""
 
-    def __init__(self, model, tau_max: float = C.TAU_MAX):
+    def __init__(self, model, tau_max: float | None = None):
         self.model = model
-        self.tau_max = tau_max
+        self.tau_max = C.TAU_MAX if tau_max is None else tau_max
 
     def evaluate(self, x, u, mu, plant=None) -> float:
         return float(_q_safe(self.model, self.tau_max, x, mu, np.asarray([u]))[0])

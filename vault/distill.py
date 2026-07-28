@@ -21,7 +21,9 @@ from scipy.interpolate import RegularGridInterpolator as RGI
 
 from . import config as C
 
-_MU_KEYS = [(m, f"V_mu{int(m * 10)}") for m in C.MU_SLICES]
+
+def _mu_keys():
+    return [(m, f"V_mu{int(m * 10)}") for m in C.MU_SLICES]
 
 
 class VNet(nn.Module):
@@ -37,10 +39,14 @@ class VNet(nn.Module):
 
 
 def _load_grid():
+    mu_keys = _mu_keys()
     d = np.load(C.GRID_NPZ, allow_pickle=True)
     axes = [np.asarray(a, float) for a in d["axes"]]
     dims = [len(a) for a in axes]
-    rgis = {m: RGI(axes, d[k].reshape(dims), bounds_error=False, fill_value=None) for m, k in _MU_KEYS}
+    rgis = {
+        m: RGI(axes, d[k].reshape(dims), bounds_error=False, fill_value=None)
+        for m, k in mu_keys
+    }
     lo = np.array([a[0] for a in axes])
     hi = np.array([a[-1] for a in axes])
     return rgis, lo, hi
@@ -53,11 +59,12 @@ def _normalizer(lo, hi):
 
 
 def _sample(n, rng, rgis, lo, hi):
+    mu_keys = _mu_keys()
     s = np.column_stack([rng.uniform(lo[i], hi[i], n) for i in range(4)])
-    mus = np.array([m for m, _ in _MU_KEYS])
-    idx = rng.integers(0, len(_MU_KEYS), n)
+    mus = np.array([m for m, _ in mu_keys])
+    idx = rng.integers(0, len(mu_keys), n)
     v = np.empty(n)
-    for j, (mu, _) in enumerate(_MU_KEYS):
+    for j, (mu, _) in enumerate(mu_keys):
         m = idx == j
         if m.any():
             v[m] = rgis[mu](s[m])

@@ -30,6 +30,19 @@ _RELEASE_VALUE_NAMES = frozenset(
         "YAW_KV",
         "YAW_EPS",
         "CONTROLLER_TAU_MAX",
+        "ODD_CONTRACT",
+        "THETA_MAX",
+        "TAU_MAX",
+        "V_ODD",
+        "PSI_ODD",
+        "EBAR_PSI",
+        "TAU_ROLL_BAR",
+        "MU_RANGE",
+        "MU_SLICES",
+        "DOMAIN_V",
+        "DOMAIN_THETA",
+        "DOMAIN_THETA_DOT",
+        "DOMAIN_PSI_DOT",
     }
 )
 
@@ -40,6 +53,7 @@ def _release_values() -> dict[str, Any]:
     composite = release.load_json("composite_params")
     limits = release.load_json("controller_limits")
     residual = release.load_json("coupled_residual")
+    odd_contract = release.load_json("odd_contract")
     mass = composite["m_b"] + 2 * composite["m_wheel"]
     track = composite["wheel_sep"]
     wheel_radius = composite["wheel_radius"]
@@ -60,6 +74,23 @@ def _release_values() -> dict[str, Any]:
         "YAW_KV": yaw["kv"],
         "YAW_EPS": yaw["eps"],
         "CONTROLLER_TAU_MAX": limits["motor_torque_limit"],
+        "ODD_CONTRACT": odd_contract,
+        "THETA_MAX": odd_contract["odd"]["theta_failure"]["bounds"][1],
+        "TAU_MAX": odd_contract["control"]["tau_max"]["value"],
+        "V_ODD": tuple(odd_contract["odd"]["velocity"]["bounds"]),
+        "PSI_ODD": odd_contract["odd"]["yaw_rate"]["bounds"][1],
+        "EBAR_PSI": odd_contract["disturbances"]["yaw_acceleration"]["value"],
+        "TAU_ROLL_BAR": odd_contract["disturbances"]["roll_wrench"]["value"],
+        "MU_RANGE": tuple(odd_contract["friction"]["range"]),
+        "MU_SLICES": tuple(odd_contract["friction"]["slices"]),
+        "DOMAIN_V": tuple(odd_contract["grid_axes"]["velocity"]["bounds"]),
+        "DOMAIN_THETA": tuple(odd_contract["grid_axes"]["theta"]["bounds"]),
+        "DOMAIN_THETA_DOT": tuple(
+            odd_contract["grid_axes"]["theta_dot"]["bounds"]
+        ),
+        "DOMAIN_PSI_DOT": tuple(
+            odd_contract["grid_axes"]["yaw_rate"]["bounds"]
+        ),
     }
 
 
@@ -74,23 +105,6 @@ def __dir__() -> list[str]:
 
 # --- integration + control ---
 DT = 0.01                                       # control/integration step (s)
-THETA_MAX = 1.2                                 # pitch failure bound (rad)
-# Safety certification was solved over an 8 N*m action set.  The controller
-# release separately preserves a 20 N*m deployed clip pending reconciliation.
-TAU_MAX = 8.0                                   # per-wheel torque limit (N*m)
-
-# --- ODD: the operational envelope we certify ---
-V_ODD = (-0.3, 1.5)                             # forward-speed bounds (m/s)
-PSI_ODD = 2.5                                   # |yaw rate| bound (rad/s)
-
-# --- disturbance upper bounds (empirical + margin -> modeling assumptions) ---
-EBAR_PSI = 3.4                                  # yaw-accel forcing bound (rad/s^2)
-TAU_ROLL_BAR = 4.0                              # roll-wrench bound (N*m)
-
-# --- friction (mu) for the mu-aware value function ---
-MU_RANGE = (0.3, 1.0)
-MU_SLICES = (0.3, 0.6, 1.0)
-
 # --- contact-based failure modes (mujoco_env.py / contact_margin.py), not part of f_cert ---
 SLAM_VEL_MAX = 1.0                              # contact normal speed (m/s) above which = a "slam"
 LEG_GROUND_CLEARANCE = 0.02                     # m: (a) mujoco_model.py's leg-tip standoff from
@@ -103,11 +117,6 @@ LEG_GROUND_CLEARANCE = 0.02                     # m: (a) mujoco_model.py's leg-t
 # --- full certified-domain bounds (matches grid.AXES_FULL) for contact-training reset coverage --
 # ContactSafetyEnv resets across this whole range (not just a narrow near-upright band) so
 # training sees challenging / already-failed ("no-win") states too, not only typical operation.
-DOMAIN_V = (-0.5, 1.7)
-DOMAIN_THETA = (-1.35, 1.35)                    # deliberately exceeds THETA_MAX=1.2 on both ends
-DOMAIN_THETA_DOT = (-6.0, 6.0)
-DOMAIN_PSI_DOT = (-3.0, 3.0)
-
 # --- target set (target_margin.py): "at a stop" neighborhood, for reach-avoid training ---
 # CORRECTED 2026-07-24 (Jaime): the target set must ALSO bound theta tightly, not just the
 # velocity-type components -- a state with v=theta_dot=psi_dot=0 but theta=1.0 rad is NOT a

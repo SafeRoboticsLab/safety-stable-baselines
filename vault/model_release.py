@@ -26,6 +26,7 @@ _RELEASE_SIDECAR = _PKG_ROOT / "data" / "release_artifacts.model.json"
 _CHECKPOINT_MANIFEST = _PKG_ROOT / "data" / "checkpoints_manifest.json"
 
 _ARTIFACTS = {
+    "odd_contract": "models/source/odd_contract.json",
     "model_geometry": "models/source/geometry/model_geometry.json",
     "composite_params": "models/generated/reduced/composite_params.json",
     "controller_limits": "models/generated/reduced/controller_limits.json",

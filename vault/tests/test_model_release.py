@@ -15,7 +15,7 @@ import pytest
 from vault.model_release import ModelRelease, ModelReleaseError, get_model_release
 
 
-LOCK_SHA256 = "0a7e7ecececf369e8eeea5e65942517951ba3910ecf87498a168d99e12173a2d"
+LOCK_SHA256 = "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f"
 COMPOSITE_SHA256 = "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9"
 KERNEL_SHA256 = "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
 
@@ -136,8 +136,11 @@ def test_config_kernel_and_mujoco_use_v22_release() -> None:
     release = get_model_release()
     assert C.MASS == pytest.approx(19.731467, abs=1e-12)
     assert C.C_THETA == pytest.approx(1.3960776897331257, abs=1e-14)
-    assert C.V_ODD == (-0.3, 1.5)
+    assert C.V_ODD == (-4.0, 4.0)
+    assert C.PSI_ODD == 4.0
     assert C.MU_SLICES == (0.3, 0.6, 1.0)
+    assert C.DOMAIN_V == (-4.0, 4.0)
+    assert C.DOMAIN_PSI_DOT == (-4.0, 4.0)
     assert OPT6_R == pytest.approx(0.12705)
     assert OPT6_DH == pytest.approx(0.140375)
     assert _SRC == release.artifact_path("opt6_kernel")
@@ -159,6 +162,50 @@ def test_config_kernel_and_mujoco_use_v22_release() -> None:
         params["m_b"] + 2.0 * params["m_wheel"],
         abs=1e-12,
     )
+
+
+def test_grid_axes_come_from_the_release_contract() -> None:
+    from vault import config as C
+    from vault import grid
+
+    assert [len(axis) for axis in grid.AXES_FULL] == [44, 29, 17, 25]
+    assert [len(axis) for axis in grid.AXES_SMOKE] == [9, 15, 11, 11]
+    np.testing.assert_allclose(
+        [axis[0] for axis in grid.AXES_FULL],
+        [-4.0, -1.35, -6.0, -4.0],
+        rtol=0.0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        [axis[-1] for axis in grid.AXES_FULL],
+        [4.0, 1.35, 6.0, 4.0],
+        rtol=0.0,
+        atol=1e-12,
+    )
+    assert grid.AXES_FULL[1][0] < -C.THETA_MAX
+    assert grid.AXES_FULL[1][-1] > C.THETA_MAX
+
+
+def test_environment_spaces_cover_the_contract_reset_domain() -> None:
+    from vault import config as C
+    from vault.env import BalanceSafetyEnv
+    from vault.mujoco_env import ContactSafetyEnv
+
+    expected_high = np.array([4.0, 1.35, 6.0, 4.0, 1.0], np.float32)
+    for environment_type in (BalanceSafetyEnv, ContactSafetyEnv):
+        environment = environment_type()
+        np.testing.assert_allclose(
+            environment.observation_space.high,
+            expected_high,
+            rtol=0.0,
+            atol=0.0,
+        )
+        np.testing.assert_allclose(
+            environment.observation_space.low,
+            -expected_high,
+            rtol=0.0,
+            atol=0.0,
+        )
 
 
 def test_external_artifact_requires_matching_model_identity(tmp_path: Path) -> None:
@@ -195,13 +242,13 @@ def test_default_and_capability_grids_have_distinct_contracts() -> None:
     capability_filter = ValueFilter.from_capability_grid(mode="unladen")
     np.testing.assert_allclose(
         odd_filter.lo,
-        [-0.5, -1.35, -6.0, -3.0],
+        [-4.0, -1.35, -6.0, -4.0],
         rtol=0.0,
         atol=1e-12,
     )
     np.testing.assert_allclose(
         odd_filter.hi,
-        [1.7, 1.35, 6.0, 3.0],
+        [4.0, 1.35, 6.0, 4.0],
         rtol=0.0,
         atol=1e-12,
     )

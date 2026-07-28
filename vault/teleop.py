@@ -43,22 +43,20 @@ except ImportError as e:  # fail loud -- teleop is meaningless without the real 
         f"(import error: {e})"
     )
 
-V_REF_MAX = C.V_ODD[1]      # 1.5 m/s
-PSI_REF_MAX = C.PSI_ODD      # 2.5 rad/s
 JOY_DEADZONE = 0.15
 
 
 def ref_from_keys(keys, pygame) -> np.ndarray:
-    v = V_REF_MAX * (float(keys[pygame.K_w]) - float(keys[pygame.K_s]))
-    psi = PSI_REF_MAX * (float(keys[pygame.K_a]) - float(keys[pygame.K_d]))
+    v = C.V_ODD[1] * (float(keys[pygame.K_w]) - float(keys[pygame.K_s]))
+    psi = C.PSI_ODD * (float(keys[pygame.K_a]) - float(keys[pygame.K_d]))
     return np.array([v, psi])
 
 
 def ref_from_joystick(js) -> np.ndarray:
     def dz(v):
         return 0.0 if abs(v) < JOY_DEADZONE else v
-    v = -V_REF_MAX * dz(js.get_axis(1))      # forward = stick up = negative raw axis
-    psi = -PSI_REF_MAX * dz(js.get_axis(0))
+    v = -C.V_ODD[1] * dz(js.get_axis(1))      # forward = stick up = negative raw axis
+    psi = -C.PSI_ODD * dz(js.get_axis(0))
     return np.array([v, psi])
 
 

@@ -21,6 +21,8 @@ Run:
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator, Sequence
+from functools import cached_property
 import time
 
 import numpy as np
@@ -29,11 +31,51 @@ from . import config as C
 from . import f_cert as F
 from .model_release import get_model_release
 
-# Grid resolution; theta (the failure axis) is finest. Box strictly contains the ODD.
-AXES_FULL = [np.linspace(-0.5, 1.7, 13), np.linspace(-1.35, 1.35, 29),
-             np.linspace(-6.0, 6.0, 17), np.linspace(-3.0, 3.0, 19)]
-AXES_SMOKE = [np.linspace(-0.5, 1.7, 9), np.linspace(-1.35, 1.35, 15),
-              np.linspace(-6.0, 6.0, 11), np.linspace(-3.0, 3.0, 11)]
+_AXIS_NAMES = ("velocity", "theta", "theta_dot", "yaw_rate")
+
+
+def _axes_from_contract(smoke: bool) -> list[np.ndarray]:
+    axes = []
+    for name in _AXIS_NAMES:
+        specification = C.ODD_CONTRACT["grid_axes"][name]
+        count_key = "smoke_nodes" if smoke else "nodes"
+        axes.append(
+            np.linspace(
+                *specification["bounds"],
+                int(specification[count_key]),
+            )
+        )
+    # The v/yaw grids include the declared ODD boundaries exactly. The theta
+    # grid strictly contains the pitch-failure set so exit-unsafe interpolation
+    # has an exterior band on the failure axis.
+    assert axes[0][0] <= C.V_ODD[0] <= C.V_ODD[1] <= axes[0][-1]
+    assert axes[3][0] <= -C.PSI_ODD < C.PSI_ODD <= axes[3][-1]
+    assert axes[1][0] < -C.THETA_MAX < C.THETA_MAX < axes[1][-1]
+    return axes
+
+
+class _ContractAxes(Sequence[np.ndarray]):
+    """Lazily materialize grid axes after the release lock is first accessed."""
+
+    def __init__(self, smoke: bool):
+        self._smoke = smoke
+
+    @cached_property
+    def _axes(self) -> list[np.ndarray]:
+        return _axes_from_contract(self._smoke)
+
+    def __getitem__(self, index):
+        return self._axes[index]
+
+    def __len__(self) -> int:
+        return len(self._axes)
+
+    def __iter__(self) -> Iterator[np.ndarray]:
+        return iter(self._axes)
+
+
+AXES_FULL = _ContractAxes(smoke=False)
+AXES_SMOKE = _ContractAxes(smoke=True)
 V_OOB = -1.0  # value assigned to transitions that exit the grid box (exit-unsafe BC)
 
 

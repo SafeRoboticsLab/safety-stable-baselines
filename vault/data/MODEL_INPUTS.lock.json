@@ -28,6 +28,20 @@
     "wheel_contact_full_width_m": 0.04,
     "provenance": "Operator-confirmed 2026-07-27 modelling choice used by the firmware simulation model and every certified artifact to date. Not mesh-derived; the 0.095 m mesh axial bounding-box extent is hub-to-hub visual geometry and must not be used as contact width."
   },
+  "odd_contract": {
+    "path": "models/source/odd_contract.json",
+    "sha256": "b97d2e9ce53d0fd8421f78b3079c5dae49c6255d11155271452519a4a4e080e2",
+    "revision": "2026-07-27-v2.2-odd-pm4",
+    "change_class": "domain widening; no safety threshold or disturbance-bound relaxation",
+    "velocity_bounds_mps": [
+      -4.0,
+      4.0
+    ],
+    "yaw_rate_bounds_radps": [
+      -4.0,
+      4.0
+    ]
+  },
   "hil_runtime": {
     "files": {
       "hil_runtime/hil_wire_level.py": "e7c7df7d63d6bf2d7ed18ea93e5eb924f15a0151e17dbf45255dc4735a710974",
@@ -370,14 +384,15 @@
     "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
     "models/generated/usd/visualization_v2_2/articulated_v2_2.usdc": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
     "models/generated/usd/visualization_v2_2/manifest.json": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
-    "models/source/MODEL_SOURCE_MANIFEST.json": "7757da3554bd1ed5955dda8991423e5af2490a54a05a0bef5ededfc686543e38",
+    "models/source/MODEL_SOURCE_MANIFEST.json": "478ebc12c418039a5a073933344023d99a76a8e5dc4bdece4a6d4b76088b31df",
+    "models/source/odd_contract.json": "b97d2e9ce53d0fd8421f78b3079c5dae49c6255d11155271452519a4a4e080e2",
     "models/source/geometry/model_geometry.json": "d808fc5fd35188ce77e115f80fae8bf1547ce2eab43a12a704d61859c6ab46f5",
     "models/source/urdf/articulated_v2_2/articulated_v2_2_manifest.json": "f01bb0748bfcb575c7aa92f68ba0e46d48c5129582d4296ee9b82b19a0526b6b",
     "models/source/urdf/articulated_v2_2/model_geometry.json": "852d38a5980a80b47708bb9e33c2ad104fb6109f0ef3135f513039b2ca2df9e9",
     "models/source/urdf/articulated_v2_2/robot.urdf": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09",
     "models/source/urdf/tucked_v2_2/robot.urdf": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "models/tools/export_usd.py": "f1b35867b44d084eb2940cee464f641cf5cfb8705dc6b9d2a4f4b69118836442",
-    "models/tools/verify_model_release.py": "7879308cc380b16013da9903e9dc46ed9875cbcef95c33d97833fc9ebe58aea1",
+    "models/tools/verify_model_release.py": "fae9d0a8ac41d74495cd3a2c09919ac0a9835fd6f0d591c5bc7d90796977a784",
     "models/tools/verify_urdf_composite.py": "818eb72133eca52df208a9677ca397a9529ec088fba4dab2765e89afd0305a0a",
     "models/tools/quantization_gap_report.py": "f548d7eaa8c3746bf7a1e3cbedc8c04663d42d6a4f093d24c3104958836618ff",
     "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
