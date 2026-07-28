@@ -224,12 +224,12 @@
   "odd_contract": {
     "change_class": "domain widening; no safety threshold or disturbance-bound relaxation",
     "path": "models/source/odd_contract.json",
-    "revision": "2026-07-28-v2.2-odd-pm4-policy-tiers",
-    "sha256": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
+    "revision": "2026-07-28-v2.2-odd-pm6-capability-window",
+    "sha256": "846456d94468191254d3d09e5ec60984d439c69e2a60188a9253fb660b5424b1",
     "theta_failure_tier": "policy",
     "velocity_bounds_mps": [
-      -4.0,
-      4.0
+      -6.0,
+      6.0
     ],
     "velocity_tier": "policy",
     "velocity_tier_note": "Corrected 2026-07-28: the four-state reduced model has no speed-dependent term, so no solve can derive a velocity boundary; the bound is a declaration.",
@@ -317,7 +317,7 @@
     },
     "model_version": "v2.2",
     "outputs": {
-      "balance_controller/c/include/balance_controller/bc_safety_params.h": "d3f617ac070963c7f6e328dc2c053254a7a1e6528e2798efd9a6c91124e6711b",
+      "balance_controller/c/include/balance_controller/bc_safety_params.h": "ccbf4bc0b41fec53ba72de22560a06adffaccb10561a1d059ec9fbc052f4b28b",
       "balance_controller/c/include/balance_controller/value_weights.h": "3d429b526abafdb3e8639b9b09438295315dae4a6704712374787f0855e399bf",
       "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "0ecb475f6b0990b83895824c0c5a9c76b7ad62c736470a5b5071880ea022e62c",
       "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "ba628abdb4a8f75f98e162e37491f8bc44896c38d803bf0e761b13470615a39c",
@@ -350,7 +350,7 @@
   "reduced_generation": {
     "branch": "feature/v2.2-model-release-toolchain",
     "command": "bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --geometry-contract <vault-controller>/models/source/geometry/model_geometry.json --controller-limits <vault-controller>/models/generated/reduced/controller_limits.json --output-dir <staging>",
-    "commit": "5c2494f537756665d6885d31d749f54a3b21a7e4",
+    "commit": "a39b85a1bc5e57ff16dfa67475dbf22183324bc9",
     "repository": "vault_simulator",
     "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
     "source_urdf_sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
@@ -366,7 +366,7 @@
   "release": "vault-robot-v2.2-camera-inclusive-reduced-balance",
   "release_files": {
     "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
-    "balance_controller/c/include/balance_controller/bc_safety_params.h": "d3f617ac070963c7f6e328dc2c053254a7a1e6528e2798efd9a6c91124e6711b",
+    "balance_controller/c/include/balance_controller/bc_safety_params.h": "ccbf4bc0b41fec53ba72de22560a06adffaccb10561a1d059ec9fbc052f4b28b",
     "balance_controller/c/include/balance_controller/bc_safety_params.h.v2_1_backup_20260726": "a0c2265c58db1b4283ca3722cee3002e830067e2f46f8c6adcecfec9c681d9f3",
     "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
     "balance_controller/c/include/balance_controller/value_weights.h": "3d429b526abafdb3e8639b9b09438295315dae4a6704712374787f0855e399bf",
@@ -378,7 +378,7 @@
     "balance_controller/c/src/value_int8.c": "34e117c686e63264afc54012940fc051a2be8aa2597db5d495def6c216cc577c",
     "balance_controller/c/test/simulator_reference.py": "73a8cc82edb3490f2ad92ccef20e3d0757698d62c143720da4bc21c2c4a5d8c1",
     "balance_controller/c/test/test_value_int8_parity.py": "30fd5fd2c16fd348b5981d0cec9c16a9e3b598c7a63cc5ae451726a84b67ca37",
-    "balance_controller/c/tools/export_safety_params.py": "5d91792771cdc7fcfe1a59ed46287df616eb93bebf0b4da6a4b513ea191269e4",
+    "balance_controller/c/tools/export_safety_params.py": "211c02a77f7dbfef7ab8d42c0b8b0904994c9da501b6679836d6b8805837903a",
     "balance_controller/c/tools/export_v_mlp_c.py": "133affa1e111d5bd71e3646c6441a9c0fb2b9021360b86e0c31c89ed7c3c8963",
     "balance_controller/c/tools/export_v_mlp_int8_c.py": "3be43f9d1f7298f9fcc254d614a6aeef31acd8ee3bdc48ce1dc57dcbcf1a6166",
     "balance_controller/tests/test_governor_known_permissive.py": "12339dfc516fe8056a9a97905b50cff7d3b3203429f9466ba0f3f6e4aa327172",
@@ -412,16 +412,16 @@
     "models/generated/safety/roll_constraint_params.json": "91810c1018bb7e201e49656911230f2de81e94d521326ec28e4d0715cc80f6e8",
     "models/generated/usd/visualization_v2_2/articulated_v2_2.usdc": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
     "models/generated/usd/visualization_v2_2/manifest.json": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
-    "models/source/MODEL_SOURCE_MANIFEST.json": "57a6e9ee7c0b205b2bc392ab442ff9f41093fd62c36321991aa7927c1559ffc2",
+    "models/source/MODEL_SOURCE_MANIFEST.json": "4fdcec9e9996f3ab4ff4e3a3f88a463c349f295bcd10139f4143e14c097f69a1",
     "models/source/geometry/model_geometry.json": "d808fc5fd35188ce77e115f80fae8bf1547ce2eab43a12a704d61859c6ab46f5",
-    "models/source/odd_contract.json": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
+    "models/source/odd_contract.json": "846456d94468191254d3d09e5ec60984d439c69e2a60188a9253fb660b5424b1",
     "models/source/urdf/articulated_v2_2/articulated_v2_2_manifest.json": "f01bb0748bfcb575c7aa92f68ba0e46d48c5129582d4296ee9b82b19a0526b6b",
     "models/source/urdf/articulated_v2_2/model_geometry.json": "852d38a5980a80b47708bb9e33c2ad104fb6109f0ef3135f513039b2ca2df9e9",
     "models/source/urdf/articulated_v2_2/robot.urdf": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09",
     "models/source/urdf/tucked_v2_2/robot.urdf": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "models/tools/export_usd.py": "f1b35867b44d084eb2940cee464f641cf5cfb8705dc6b9d2a4f4b69118836442",
     "models/tools/quantization_gap_report.py": "f548d7eaa8c3746bf7a1e3cbedc8c04663d42d6a4f093d24c3104958836618ff",
-    "models/tools/verify_model_release.py": "53248e4be3b092db93df1594a5db4ff7c55bd1719c5c672ce25a7013009f047c",
+    "models/tools/verify_model_release.py": "95c8c56e3f58bba532f44f39578169bb8e357332be54e05e79ec927e5fff6dcb",
     "models/tools/verify_urdf_composite.py": "50c22e1ecb4fda51c3f97ffc3d97331aa276c5ddcfa5ecac4726195ae43be355"
   },
   "schema_version": 1,

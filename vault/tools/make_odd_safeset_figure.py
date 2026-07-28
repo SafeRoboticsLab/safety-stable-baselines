@@ -44,8 +44,24 @@ def main() -> int:
     axes = [np.asarray(a, float) for a in z["axes"]]
     dims = [len(a) for a in axes]
     grids = {k: np.asarray(z[k], float).reshape(dims) for k, _ in MUS}
-    v_ax, th_ax = axes[0], axes[1]
+    v_ax, th_ax, psi_ax = axes[0], axes[1], axes[3]
+    i_th = int(np.argmin(abs(th_ax)))
     i_thd, i_psd = int(np.argmin(abs(axes[2]))), int(np.argmin(abs(axes[3])))
+
+    def slice_v_theta(V):
+        """(v, theta) at theta_dot = psi_dot = 0 -- how far it can lean at speed."""
+        return V[:, :, i_thd, i_psd]
+
+    def slice_v_psi(V):
+        """(v, psi_dot) at theta = theta_dot = 0 -- how hard it can TURN at speed.
+
+        This is the panel that answers "can it still turn at 6 m/s". The roll
+        constraint |v*psi_dot| <= a_tip is a hyperbola, so the boundary here is the
+        available yaw authority as a function of speed, read directly off the
+        certified set. No separate analysis is needed: it is the same 4-D value
+        function, sliced on the other pair of axes.
+        """
+        return V[:, i_th, i_thd, :]
 
     fig = plt.figure(figsize=(8.5, 6.6))
     fig.patch.set_facecolor("white")
@@ -80,14 +96,20 @@ def main() -> int:
                                    label="declared ODD velocity bound")],
                loc="upper left", bbox_to_anchor=(L, 0.722), ncol=3, frameon=False, fontsize=8.4)
 
-    gs = fig.add_gridspec(1, 3, left=0.075, right=0.96, top=0.60, bottom=0.135, wspace=0.30)
+    gs = fig.add_gridspec(2, 3, left=0.075, right=0.96, top=0.60, bottom=0.075,
+                          wspace=0.30, hspace=0.62)
     dv, dt = (v_ax[1] - v_ax[0]) / 2, (th_ax[1] - th_ax[0]) / 2
-    extent = [v_ax[0] - dv, v_ax[-1] + dv, th_ax[0] - dt, th_ax[-1] + dt]
+    dp = (psi_ax[1] - psi_ax[0]) / 2
+    extent_th = [v_ax[0] - dv, v_ax[-1] + dv, th_ax[0] - dt, th_ax[-1] + dt]
+    extent_psi = [v_ax[0] - dv, v_ax[-1] + dv, psi_ax[0] - dp, psi_ax[-1] + dp]
 
     for col, ((key, mu), (_, frac, blo, bhi)) in enumerate(zip(MUS, stats)):
+        V = grids[key]
+
+        # Row 0 -- lean available at speed.
         ax = fig.add_subplot(gs[0, col])
-        ax.imshow((grids[key][:, :, i_thd, i_psd] >= 0).T.astype(float), origin="lower",
-                  aspect="auto", extent=extent, cmap=CMAP, vmin=0, vmax=1,
+        ax.imshow((slice_v_theta(V) >= 0).T.astype(float), origin="lower",
+                  aspect="auto", extent=extent_th, cmap=CMAP, vmin=0, vmax=1,
                   interpolation="nearest")
         for edge in (v_lo, v_hi):
             ax.axvline(edge, ls="--", lw=1.1, color="#1a1a1a")
@@ -97,6 +119,27 @@ def main() -> int:
                 transform=ax.transAxes, fontsize=7, color="#555555", va="bottom")
         ax.set_xlabel("v  (m/s)", fontsize=8)
         ax.set_ylabel(r"$\theta$  (rad)", fontsize=8)
+        ax.tick_params(labelsize=7)
+
+        # Row 1 -- yaw authority available at speed. Same value function, other axes.
+        ax = fig.add_subplot(gs[1, col])
+        mask = (slice_v_psi(V) >= 0)
+        ax.imshow(mask.T.astype(float), origin="lower", aspect="auto",
+                  extent=extent_psi, cmap=CMAP, vmin=0, vmax=1,
+                  interpolation="nearest")
+        for edge in (v_lo, v_hi):
+            ax.axvline(edge, ls="--", lw=1.1, color="#1a1a1a")
+        # Certified yaw at a few speeds, so the turn budget is readable as numbers.
+        readout = []
+        for probe in (2.0, 4.0, 6.0):
+            j = int(np.argmin(abs(v_ax - probe)))
+            admissible = psi_ax[mask[j]]
+            readout.append(f"{probe:g}:{abs(admissible).max():.2f}" if admissible.size
+                           else f"{probe:g}:--")
+        ax.text(0, 1.015, "max $|\\dot\\psi|$ at v = " + ", ".join(readout) + " rad/s",
+                transform=ax.transAxes, fontsize=7, color="#555555", va="bottom")
+        ax.set_xlabel("v  (m/s)", fontsize=8)
+        ax.set_ylabel(r"$\dot\psi$  (rad/s)", fontsize=8)
         ax.tick_params(labelsize=7)
 
     fig.text(L, 0.075,

@@ -1,0 +1,59 @@
+# Ownership boundary for the vault safety package.
+#
+# This repository holds two layers with different authorities, and the split is
+# currently only visible through `git log`. Writing it down is the point of this
+# file: the reach-avoid safety-filter mathematics is Jaime's domain, and the
+# four-state model and its contracts are Robert's. Changes should respect that
+# regardless of who is holding the keyboard.
+#
+# The rule that matters:
+#
+#   * MODEL/CONTRACT changes are ANNOUNCED to the math layer's owner before
+#     landing. They move the ground the math stands on -- a corrected bound or a
+#     widened ODD changes results without changing a line of the math.
+#   * MATH-LAYER changes are the math owner's call. A defect found there is
+#     reported with analysis, not silently fixed.
+#
+# Everything below is descriptive of the actual authorship (see `git log --reverse`
+# on each file), not an aspiration.
+
+# ---------------------------------------------------------------------------
+# Reach-avoid safety-filter mathematics -- Jaime Fernandez Fisac
+# Introduced in 2c4f73d (2026-07-24).
+# ---------------------------------------------------------------------------
+/vault/reach_avoid_sac.py        @jfisac
+/vault/reach_avoid_value.py      @jfisac
+/vault/reach_avoid_eval.py       @jfisac
+/vault/reach_avoid_slice.py      @jfisac
+/vault/train_reach_avoid.py      @jfisac
+/vault/safety_filter.py          @jfisac
+/vault/tests/test_drabe_operator.py  @jfisac
+
+# ---------------------------------------------------------------------------
+# Upstream avoid-only SAC -- Haimin Hu, vendored.
+# The entropy-bonus defect documented in reach_avoid_sac.py originates here, not
+# in the reach-avoid extension.
+# ---------------------------------------------------------------------------
+/safety_sb3/                     @haiminhu
+
+# ---------------------------------------------------------------------------
+# Four-state model, certified plant, and contracts -- Robert Shi.
+# Introduced in 4340e3b (2026-06-25) as the "4-state balance-safety package".
+# These define what the math layer is reasoning ABOUT.
+# ---------------------------------------------------------------------------
+/vault/f_cert.py                 @rshi159
+/vault/grid.py                   @rshi159
+/vault/filter.py                 @rshi159
+/vault/distill.py                @rshi159
+/vault/config.py                 @rshi159
+/vault/dynamics.py               @rshi159
+/vault/env.py                    @rshi159
+/vault/model_release.py          @rshi159
+/vault/mujoco_*.py               @rshi159
+/vault/tools/                    @rshi159
+/vault/data/                     @rshi159
+
+# The ODD contract, the roll constraint and the generated model artifacts live in
+# the vault-controller repository and are pinned here by MODEL_INPUTS.lock.json.
+# They are the model layer's authority; this repo consumes them and must never
+# restate their values as literals.
