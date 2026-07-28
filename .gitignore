@@ -71,3 +71,10 @@ experiments/
 *.rar
 *.7z
 *.mp4
+
+# Preserved on exploratory/v2.2-safety-investigation; do not let local
+# certificate-investigation outputs leak into the focused model consumer.
+vault/data/articulated_fcert_residuals_v2_2.npz*
+vault/data/ssb_eval_odd_grid_v2_2_local_residual.npz*
+vault/data/ssb_eval_odd_grid_v2_2_mean_corrected.npz*
+vault/diagnostics/
