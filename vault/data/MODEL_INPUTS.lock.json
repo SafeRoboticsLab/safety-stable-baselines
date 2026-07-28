@@ -38,14 +38,15 @@
   },
   "reduced_generation": {
     "repository": "vault_simulator",
+    "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
     "branch": "feature/v2.2-model-release-toolchain",
-    "commit": "07968398ff755f5070ea3689e1d328d4d16fdf00",
+    "commit": "0d81e804eaf140b290e8a14d306bb001d9e634cc",
     "command": "bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --output-dir <staging>",
     "source_urdf_sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "staged_artifacts": {
       "composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
       "mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
-      "model_geometry.json": "a596c3c8c3886c31e66d698b865fc6fbfc60a731d4066ee0d2cda3defccf002b",
+      "model_geometry.json": "d86ffc73bf860eb58a433b017db603399fcd220de5a69d6858c034837991a37e",
       "reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
     }
   },
@@ -146,8 +147,9 @@
     "model_version": "v2.2",
     "toolchain": {
       "repository": "vault_simulator",
+      "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
       "branch": "feature/v2.2-model-release-toolchain",
-      "commit": "4e7384e554bd1e6e85385d5d370371398cacd110",
+      "commit": "0d81e804eaf140b290e8a14d306bb001d9e634cc",
       "promotion_commit": "cb55bb32dffdfa9c79ce1ed06a189f77ab0990c1",
       "iteration_budget_commit": "65d8989770b30b3dc23fe3729925784f4ba2ef5d",
       "int8_quantizer_commit": "f6ba3be8bcc88b51defd0334632e4e84784a30e3",
@@ -164,9 +166,9 @@
       "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
       "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
       "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
-      "models/generated/safety/mlp/v_mlp_unladen.json": "d0166ef8329adb548c1f75dee065726fcf374e752d2d1374e16030fd41bbf57e",
+      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
       "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-      "models/generated/safety/mlp/v_mlp_laden.json": "5ee30e5c80a6e82641193553e5bb944479ca9fb2c0725723615adbabaa461a98",
+      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
       "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
       "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
       "balance_controller/c/include/balance_controller/bc_safety_params.h": "9e715591fcaa72a31fc7ac3dbcb6572e6059b1fccd613680f2df40766a332509",
@@ -258,14 +260,24 @@
     "f32_int8_ordering": "diagnostic only; both networks are independently gated against the robust-grid oracle",
     "weight_scope": "channel",
     "comparison_baseline_scope": "tensor",
+    "runtime_sources": {
+      "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
+      "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
+      "balance_controller/c/src/safety.c": "7bf472328fe90d0246eeef5f9ac4dba37d5623cabb4c6fe0e6cb4b6aa290727d",
+      "balance_controller/c/src/value.c": "c21a3a4d74d8f3f2d1eb0edd5538d031d1c19296154ec066992880b11184da64",
+      "balance_controller/c/src/value_filter.c": "ae9690e6a7c15aea93f8c3690cba393b84ca6dd520e7314d25489e9e623dc2b4",
+      "balance_controller/c/src/value_int8.c": "34e117c686e63264afc54012940fc051a2be8aa2597db5d495def6c216cc577c",
+      "balance_controller/c/test/simulator_reference.py": "73a8cc82edb3490f2ad92ccef20e3d0757698d62c143720da4bc21c2c4a5d8c1",
+      "balance_controller/c/test/test_value_int8_parity.py": "30fd5fd2c16fd348b5981d0cec9c16a9e3b598c7a63cc5ae451726a84b67ca37"
+    },
     "quantizer_commit": "f6ba3be8bcc88b51defd0334632e4e84784a30e3",
     "inputs": {
       "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
       "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
       "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
-      "models/generated/safety/mlp/v_mlp_unladen.json": "d0166ef8329adb548c1f75dee065726fcf374e752d2d1374e16030fd41bbf57e",
+      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
       "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-      "models/generated/safety/mlp/v_mlp_laden.json": "5ee30e5c80a6e82641193553e5bb944479ca9fb2c0725723615adbabaa461a98",
+      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
       "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
       "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
       "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
@@ -274,8 +286,8 @@
     },
     "outputs": {
       "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
-      "models/generated/safety/int8/QUANTIZATION_GAP.md": "d56e67f459b65586f7b3f4e63ae9c289f8e1265bd9db79e370d73776b3f0cfd1",
-      "models/generated/safety/int8/QUANTIZATION_GAP.json": "99f3c782825124691e90445a3b7def53ca5eb73d53dca36d123c5862a29ce09e",
+      "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
+      "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
       "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6"
     },
     "commands": [
@@ -311,11 +323,42 @@
       }
     }
   },
+  "known_runtime_defects": {
+    "independent_abs_governor_query": {
+      "status": "behavior pinned; correction requires deployed-lane operator review",
+      "audit_date": "2026-07-27",
+      "reserve": 0.35,
+      "mapped_safe_signed_unsafe_counts_20000": {
+        "inside_abs_v_le_1_5": {
+          "mu_0_3": 3,
+          "mu_0_6": 0,
+          "mu_1_0": 0
+        },
+        "inside_abs_v_le_5_5": {
+          "mu_0_3": 155,
+          "mu_0_6": 248,
+          "mu_1_0": 344
+        }
+      },
+      "regression_test": "balance_controller/tests/test_governor_known_permissive.py"
+    }
+  },
   "release_files": {
+    "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
+    "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
     "balance_controller/c/include/balance_controller/bc_safety_params.h": "9e715591fcaa72a31fc7ac3dbcb6572e6059b1fccd613680f2df40766a332509",
     "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a",
     "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
+    "balance_controller/c/tools/export_safety_params.py": "d36652bf7d8633e24eb665dfad2d075d81f8a20c3ad8dd2c5d4c3b30c624d14e",
+    "balance_controller/c/tools/export_v_mlp_c.py": "133affa1e111d5bd71e3646c6441a9c0fb2b9021360b86e0c31c89ed7c3c8963",
     "balance_controller/c/tools/export_v_mlp_int8_c.py": "3be43f9d1f7298f9fcc254d614a6aeef31acd8ee3bdc48ce1dc57dcbcf1a6166",
+    "balance_controller/c/src/safety.c": "7bf472328fe90d0246eeef5f9ac4dba37d5623cabb4c6fe0e6cb4b6aa290727d",
+    "balance_controller/c/src/value.c": "c21a3a4d74d8f3f2d1eb0edd5538d031d1c19296154ec066992880b11184da64",
+    "balance_controller/c/src/value_filter.c": "ae9690e6a7c15aea93f8c3690cba393b84ca6dd520e7314d25489e9e623dc2b4",
+    "balance_controller/c/src/value_int8.c": "34e117c686e63264afc54012940fc051a2be8aa2597db5d495def6c216cc577c",
+    "balance_controller/c/test/simulator_reference.py": "73a8cc82edb3490f2ad92ccef20e3d0757698d62c143720da4bc21c2c4a5d8c1",
+    "balance_controller/c/test/test_value_int8_parity.py": "30fd5fd2c16fd348b5981d0cec9c16a9e3b598c7a63cc5ae451726a84b67ca37",
+    "balance_controller/tests/test_governor_known_permissive.py": "12339dfc516fe8056a9a97905b50cff7d3b3203429f9466ba0f3f6e4aa327172",
     "models/generated/mujoco/articulated/articulated_v2_2.xml": "a8b3545e7ad80c4b1a4d8ab3f357fbdd9b49faf761039e5a39f78e3cf7241372",
     "models/generated/mujoco/articulated/generate.py": "cb8cfc7e8a928f7c278a2938c1040934d5c4762a83e2d62ff35a7d1953e8d220",
     "models/generated/mujoco/balance/balance_plant.xml": "cf274a714c176674ec66050da5ba942dfe25ab69ed994bdfb81ac2fb6d233d19",
@@ -323,7 +366,7 @@
     "models/generated/reduced/composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
     "models/generated/reduced/controller_limits.json": "6803c447601ea2828ceb6fcfc5aa8974466ad275d3f635cd07097c3704bd41b5",
     "models/generated/reduced/mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
-    "models/generated/reduced/model_geometry.json": "a596c3c8c3886c31e66d698b865fc6fbfc60a731d4066ee0d2cda3defccf002b",
+    "models/generated/reduced/model_geometry.json": "d86ffc73bf860eb58a433b017db603399fcd220de5a69d6858c034837991a37e",
     "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
     "models/generated/usd/visualization_v2_2/articulated_v2_2.usdc": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
     "models/generated/usd/visualization_v2_2/manifest.json": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
@@ -334,25 +377,25 @@
     "models/source/urdf/articulated_v2_2/robot.urdf": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09",
     "models/source/urdf/tucked_v2_2/robot.urdf": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "models/tools/export_usd.py": "f1b35867b44d084eb2940cee464f641cf5cfb8705dc6b9d2a4f4b69118836442",
-    "models/tools/verify_model_release.py": "97756651bb117904cb36f785eb53a2b4b900a038e65622bb0e430d00030ccf8c",
+    "models/tools/verify_model_release.py": "7879308cc380b16013da9903e9dc46ed9875cbcef95c33d97833fc9ebe58aea1",
     "models/tools/verify_urdf_composite.py": "818eb72133eca52df208a9677ca397a9529ec088fba4dab2765e89afd0305a0a",
-    "models/tools/quantization_gap_report.py": "f64746e45a5fc4436e7109648bf96ac00f7f8860e680d996a7a314ca57977164",
+    "models/tools/quantization_gap_report.py": "f548d7eaa8c3746bf7a1e3cbedc8c04663d42d6a4f093d24c3104958836618ff",
     "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
     "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
     "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1",
     "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
     "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
     "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
-    "models/generated/safety/mlp/v_mlp_unladen.json": "d0166ef8329adb548c1f75dee065726fcf374e752d2d1374e16030fd41bbf57e",
+    "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
     "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-    "models/generated/safety/mlp/v_mlp_laden.json": "5ee30e5c80a6e82641193553e5bb944479ca9fb2c0725723615adbabaa461a98",
+    "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
     "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
     "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
     "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
     "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
     "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111",
-    "models/generated/safety/int8/QUANTIZATION_GAP.md": "d56e67f459b65586f7b3f4e63ae9c289f8e1265bd9db79e370d73776b3f0cfd1",
-    "models/generated/safety/int8/QUANTIZATION_GAP.json": "99f3c782825124691e90445a3b7def53ca5eb73d53dca36d123c5862a29ce09e",
+    "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
+    "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
     "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6",
     "balance_controller/c/include/balance_controller/bc_safety_params.h.v2_1_backup_20260726": "a0c2265c58db1b4283ca3722cee3002e830067e2f46f8c6adcecfec9c681d9f3",
     "balance_controller/c/include/balance_controller/value_weights.h.v2_1_backup_20260726": "de787e32902a32e0c02ac5478d95de0b942a6ef3a1aa624b22e435a7fa6a00ac"
