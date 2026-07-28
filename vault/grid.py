@@ -107,8 +107,8 @@ def _stencil(axes, strides, points):
     return idx, w.astype(np.float32)
 
 
-def solve(mu, axes, controls, max_iters=400, tol=1e-3, verbose=True):
-    """Robust reach-avoid value iteration for a single mu. Returns (V[grid-shape], n_iters)."""
+def solve(mu, axes, controls, max_iters=1000, tol=1e-3, verbose=True):
+    """Run one robust solve and return value, iterations, terminal dV, convergence."""
     dims = [len(a) for a in axes]
     strides = np.array([dims[1] * dims[2] * dims[3], dims[2] * dims[3], dims[3], 1])
     lo = np.array([a[0] for a in axes])
@@ -139,14 +139,19 @@ def solve(mu, axes, controls, max_iters=400, tol=1e-3, verbose=True):
             print(f"  mu={mu} iter {k:3d}: dV={dv:.4f} safe={100 * np.mean(V >= 0):.1f}%", flush=True)
         if dv < tol:
             break
-    return V.reshape(dims), k + 1
+    return V.reshape(dims), k + 1, float(dv), bool(dv < tol)
 
 
 def main():
     ap = argparse.ArgumentParser(description="4D grid HJ reach-avoid value iteration")
     ap.add_argument("--smoke", action="store_true", help="small grid, single mu, foreground")
     ap.add_argument("--mu", type=float, default=None, help="solve a single mu (does not save)")
-    ap.add_argument("--iters", type=int, default=400)
+    ap.add_argument(
+        "--iters",
+        type=int,
+        default=1000,
+        help="iteration budget only; convergence tolerance remains 1e-3",
+    )
     ap.add_argument("--controls", type=int, default=5, help="per-axis control samples (n x n)")
     args = ap.parse_args()
 
@@ -160,9 +165,22 @@ def main():
     values = {}
     for mu in mus:
         t0 = time.time()
-        V, iters = solve(mu, axes, controls, max_iters=args.iters)
+        V, iters, terminal_dv, converged = solve(
+            mu, axes, controls, max_iters=args.iters
+        )
+        if not converged:
+            print(
+                f"GATE FAIL: mu={mu} did not converge after {iters} iterations "
+                f"(dV={terminal_dv:.6g} >= 0.001); no grid saved",
+                flush=True,
+            )
+            return 2
         values[mu] = V
-        print(f"mu={mu}: safe-set {100 * np.mean(V >= 0):4.1f}% of grid | {iters} iters {time.time() - t0:.0f}s")
+        print(
+            f"mu={mu}: CONVERGED dV={terminal_dv:.6g} | "
+            f"safe-set {100 * np.mean(V >= 0):4.1f}% of grid | "
+            f"{iters} iters {time.time() - t0:.0f}s"
+        )
 
     if not args.smoke and args.mu is None:
         np.savez(C.GRID_NPZ, **{f"V_mu{int(m * 10)}": V for m, V in values.items()},
