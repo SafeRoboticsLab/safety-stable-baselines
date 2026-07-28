@@ -1,24 +1,24 @@
 {
-  "schema_version": 1,
-  "release_lock_sha256": "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f",
   "checkpoints": [
     {
+      "incompatible_with": "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f",
       "pattern": "balance_safety_sac*",
-      "status": "incompatible",
-      "incompatible_with": "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f",
-      "reason": "trained before the v2.2 camera-inclusive reduced-model release"
+      "reason": "trained before the v2.2 camera-inclusive reduced-model release",
+      "status": "incompatible"
     },
     {
+      "incompatible_with": "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f",
       "pattern": "contact_safety_sac_v3*",
-      "status": "incompatible",
-      "incompatible_with": "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f",
-      "reason": "trained before the v2.2 camera-inclusive reduced-model release"
+      "reason": "trained before the v2.2 camera-inclusive reduced-model release",
+      "status": "incompatible"
     },
     {
-      "pattern": "reach_avoid_safety_sac*",
-      "status": "incompatible",
       "incompatible_with": "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f",
-      "reason": "trained before the v2.2 camera-inclusive reduced-model release"
+      "pattern": "reach_avoid_safety_sac*",
+      "reason": "trained before the v2.2 camera-inclusive reduced-model release",
+      "status": "incompatible"
     }
-  ]
+  ],
+  "release_lock_sha256": "a52fa6dad11b67bcf32d454810110bf040bcbe766381ff32e493cd47c055ae48",
+  "schema_version": 1
 }

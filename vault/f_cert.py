@@ -31,10 +31,19 @@ def _opt6() -> CoupledOpt6:
 
 
 def wheel_loads(v, psid):
-    """Per-wheel normal forces with centrifugal load transfer (outer wheel loaded)."""
+    """Per-wheel normal forces with centrifugal load transfer (outer wheel loaded).
+
+    The static base is the CONSERVATIVE LOWER per-wheel load, applied to both wheels.
+    The v2.2 centre of mass is 7.28 mm off-centre laterally, so the true static split
+    is 101.80/91.77 N rather than even; assigning those to left and right requires a
+    sign convention that is not released yet, and getting it backwards would credit
+    the lighter wheel with the heavier load. Using the lower value for both wheels
+    understates total available friction and is safe under either convention.
+    """
     n_tot = C.MASS * C.GRAV
-    dn = C.MASS * abs(v * psid) * C.COM_H / C.TRACK
-    nl, nr = (n_tot / 2 - dn, n_tot / 2 + dn) if v * psid >= 0 else (n_tot / 2 + dn, n_tot / 2 - dn)
+    dn = C.MASS * abs(v * psid) * C.COM_H_WHOLE / C.TRACK
+    base = C.N_STATIC_MIN
+    nl, nr = (base - dn, base + dn) if v * psid >= 0 else (base + dn, base - dn)
     return n_tot, max(nl, 0.0), max(nr, 0.0)
 
 
@@ -73,7 +82,7 @@ def odd_margin(X, tau_roll_bar=None):
     trb = C.TAU_ROLL_BAR if tau_roll_bar is None else tau_roll_bar
     v, th, psid = X[..., 0], X[..., 1], X[..., 3]
     g_pitch = (C.THETA_MAX - np.abs(th)) / C.THETA_MAX
-    a_lat = np.abs(v * psid) + trb / (C.MASS * C.COM_H)
+    a_lat = np.abs(v * psid) + trb / (C.MASS * C.COM_H_WHOLE)
     g_roll = 1.0 - a_lat / C.A_TIP
     g_v = np.minimum(v - C.V_ODD[0], C.V_ODD[1] - v) / ((C.V_ODD[1] - C.V_ODD[0]) / 2)
     g_psi = (C.PSI_ODD - np.abs(psid)) / C.PSI_ODD

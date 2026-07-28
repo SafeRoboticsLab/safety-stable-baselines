@@ -77,7 +77,7 @@ class BalanceSafetyEnv(gym.Env):
         self.t += 1
         g = float(F.margin(self.x))
         if tau_roll:                                        # roll wrench as effective lateral accel
-            a_lat = abs(self.x[0] * self.x[3]) + abs(tau_roll) / (C.MASS * C.COM_H)
+            a_lat = abs(self.x[0] * self.x[3]) + abs(tau_roll) / (C.MASS * C.COM_H_WHOLE)
             g = float(min(g, 1.0 - a_lat / C.A_TIP))
         terminated = bool(g < 0.0)
         truncated = bool(self.t >= self.max_steps)

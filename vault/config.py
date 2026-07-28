@@ -22,8 +22,9 @@ _RELEASE_VALUE_NAMES = frozenset(
         "TRACK",
         "WHEEL_R",
         "GRAV",
-        "COM_H",
+        "COM_H_WHOLE",
         "A_TIP",
+        "N_STATIC_MIN",
         "C_THETA",
         "YAW_K0",
         "YAW_KC",
@@ -58,16 +59,27 @@ def _release_values() -> dict[str, Any]:
     track = composite["wheel_sep"]
     wheel_radius = composite["wheel_radius"]
     gravity = limits["gravity"]
-    com_height = composite["h_cm"] + wheel_radius
     yaw = residual["yaw"]
+    # Roll-constraint quantities come from the generated roll artifact, never from
+    # the reduced dynamics parameters. h_cm is a sprung-EQUIVALENT pendulum length
+    # (M_total * z_com / m_sprung), not a geometric height, so h_cm + wheel_radius
+    # overstates the whole-robot centre-of-mass height above ground by 8.2 mm. The
+    # rollover moment balance needs the true height, and the reduction does not
+    # emit it -- hence the separate artifact.
+    roll = release.load_json("roll_constraint_params")
+    com_height_whole = roll["whole_com_height_above_ground_m"]
+    a_tip = roll["no_liftoff_lateral_acceleration_m_s2"]["symmetric_worst_case"]
     return {
         "MODEL_RELEASE": release,
         "MASS": mass,
         "TRACK": track,
         "WHEEL_R": wheel_radius,
         "GRAV": gravity,
-        "COM_H": com_height,
-        "A_TIP": gravity * track / (2 * com_height),
+        "COM_H_WHOLE": com_height_whole,
+        "A_TIP": a_tip,
+        "N_STATIC_MIN": (
+            roll["static_wheel_normal_loads_n"]["conservative_lower_per_wheel"]
+        ),
         "C_THETA": residual["pitch"]["c0"],
         "YAW_K0": yaw["k0"],
         "YAW_KC": yaw["kc"],

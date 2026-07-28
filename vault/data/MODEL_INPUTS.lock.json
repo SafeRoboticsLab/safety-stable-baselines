@@ -57,14 +57,39 @@
     "repository": "vault_simulator",
     "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
     "branch": "feature/v2.2-model-release-toolchain",
-    "commit": "0d81e804eaf140b290e8a14d306bb001d9e634cc",
-    "command": "bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --output-dir <staging>",
+    "commit": "bdd5cb1aa62646bc67ac16ba8ca3eee395891acb",
+    "command": "bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --geometry-contract <vault-controller>/models/source/geometry/model_geometry.json --controller-limits <vault-controller>/models/generated/reduced/controller_limits.json --output-dir <staging>",
     "source_urdf_sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "staged_artifacts": {
       "composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
+      "mass_properties_tucked_v2_2.json": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149",
       "mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
-      "model_geometry.json": "d86ffc73bf860eb58a433b017db603399fcd220de5a69d6858c034837991a37e",
-      "reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
+      "model_geometry.json": "e8bc2952730b08425fd5669df5b201d0a11ceeaae2ca88da28bf7c8b5f1c85d3",
+      "reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
+      "roll_constraint_params.json": "aa9e7cb18af6b5470b506344de12e37a6fbbacc79dcddeaa76030de6b1fa542e"
+    }
+  },
+  "full_mass_properties_and_roll_constraint": {
+    "status": "authority artifacts generated and independently cross-checked",
+    "mass_properties": {
+      "path": "models/generated/mass_properties/mass_properties_tucked_v2_2.json",
+      "sha256": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149"
+    },
+    "roll_constraint": {
+      "path": "models/generated/safety/roll_constraint_params.json",
+      "sha256": "aa9e7cb18af6b5470b506344de12e37a6fbbacc79dcddeaa76030de6b1fa542e",
+      "load_case": "unladen_tucked",
+      "support_model": "wheel-centre support lines; the 0.02 m cylinder half-width is recorded but not credited",
+      "shipped_policy": "symmetric worst-case bound and conservative lower static load for both wheels"
+    },
+    "cross_path_tolerances": {
+      "mass_abs": 1e-12,
+      "com_abs": 1e-12,
+      "inertia_abs": 1e-11
+    },
+    "consumer_regeneration": {
+      "status": "pending",
+      "reason": "fcert consumers, robust grids, distilled networks, int8 artifacts, and parity gates must be regenerated from the new roll constraint after the consumer-side rebase"
     }
   },
   "controller_limits": {
@@ -188,7 +213,7 @@
       "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
       "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
       "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
-      "balance_controller/c/include/balance_controller/bc_safety_params.h": "9e715591fcaa72a31fc7ac3dbcb6572e6059b1fccd613680f2df40766a332509",
+      "balance_controller/c/include/balance_controller/bc_safety_params.h": "08c008ff1d4ce7be678017462a80d173abab40ad31a1830ea3cd90c740c8510c",
       "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a"
     },
     "commands": [
@@ -363,10 +388,10 @@
   "release_files": {
     "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
     "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
-    "balance_controller/c/include/balance_controller/bc_safety_params.h": "9e715591fcaa72a31fc7ac3dbcb6572e6059b1fccd613680f2df40766a332509",
+    "balance_controller/c/include/balance_controller/bc_safety_params.h": "08c008ff1d4ce7be678017462a80d173abab40ad31a1830ea3cd90c740c8510c",
     "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a",
     "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
-    "balance_controller/c/tools/export_safety_params.py": "d36652bf7d8633e24eb665dfad2d075d81f8a20c3ad8dd2c5d4c3b30c624d14e",
+    "balance_controller/c/tools/export_safety_params.py": "5099feb1a4c923dad4c770a357d3f3df0596d45928cb9e4815a657dbf3cd8830",
     "balance_controller/c/tools/export_v_mlp_c.py": "133affa1e111d5bd71e3646c6441a9c0fb2b9021360b86e0c31c89ed7c3c8963",
     "balance_controller/c/tools/export_v_mlp_int8_c.py": "3be43f9d1f7298f9fcc254d614a6aeef31acd8ee3bdc48ce1dc57dcbcf1a6166",
     "balance_controller/c/src/safety.c": "7bf472328fe90d0246eeef5f9ac4dba37d5623cabb4c6fe0e6cb4b6aa290727d",
@@ -382,8 +407,9 @@
     "models/generated/mujoco/balance/generate.py": "d201489fe5f278011b91f5547853c39be77857ce7d262ed0954bec763bfc8613",
     "models/generated/reduced/composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
     "models/generated/reduced/controller_limits.json": "6803c447601ea2828ceb6fcfc5aa8974466ad275d3f635cd07097c3704bd41b5",
+    "models/generated/mass_properties/mass_properties_tucked_v2_2.json": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149",
     "models/generated/reduced/mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
-    "models/generated/reduced/model_geometry.json": "d86ffc73bf860eb58a433b017db603399fcd220de5a69d6858c034837991a37e",
+    "models/generated/reduced/model_geometry.json": "e8bc2952730b08425fd5669df5b201d0a11ceeaae2ca88da28bf7c8b5f1c85d3",
     "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
     "models/generated/usd/visualization_v2_2/articulated_v2_2.usdc": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
     "models/generated/usd/visualization_v2_2/manifest.json": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
@@ -395,12 +421,13 @@
     "models/source/urdf/articulated_v2_2/robot.urdf": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09",
     "models/source/urdf/tucked_v2_2/robot.urdf": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "models/tools/export_usd.py": "f1b35867b44d084eb2940cee464f641cf5cfb8705dc6b9d2a4f4b69118836442",
-    "models/tools/verify_model_release.py": "fae9d0a8ac41d74495cd3a2c09919ac0a9835fd6f0d591c5bc7d90796977a784",
-    "models/tools/verify_urdf_composite.py": "818eb72133eca52df208a9677ca397a9529ec088fba4dab2765e89afd0305a0a",
+    "models/tools/verify_model_release.py": "6bdac8be1f7dc8c537ac8807545c2763076d865ed1a35be3ea98e547fc748ee5",
+    "models/tools/verify_urdf_composite.py": "a099f9dac59816afc2cc5b8d0fe4f1567cb9a8701559d4932c5a2744fb1a13e9",
     "models/tools/quantization_gap_report.py": "f548d7eaa8c3746bf7a1e3cbedc8c04663d42d6a4f093d24c3104958836618ff",
     "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
     "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
     "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1",
+    "models/generated/safety/roll_constraint_params.json": "aa9e7cb18af6b5470b506344de12e37a6fbbacc79dcddeaa76030de6b1fa542e",
     "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
     "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
     "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",

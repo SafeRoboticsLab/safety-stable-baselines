@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "lock_sha256": "dc1363159297d9f58b3cd6f0d121b244fb60570bf4447d2d1ef3a99bf62dee08",
+  "artifacts": {
+    "composite_params": "models/generated/reduced/composite_params.json",
+    "controller_limits": "models/generated/reduced/controller_limits.json",
+    "coupled_residual": "models/generated/safety/residuals/coupled_residual_fit.json",
+    "grid_laden": "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz",
+    "grid_unladen": "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz",
+    "model_geometry": "models/source/geometry/model_geometry.json",
+    "odd_contract": "models/source/odd_contract.json",
+    "opt6_kernel": "models/generated/reduced/reduced_struct_fjac_f32_opt6.c",
+    "roll_constraint_params": "models/generated/safety/roll_constraint_params.json",
+    "safety_params_header": "balance_controller/c/include/balance_controller/bc_safety_params.h",
+    "v_mlp_laden_json": "models/generated/safety/mlp/v_mlp_laden.json",
+    "v_mlp_laden_pt": "models/generated/safety/mlp/v_mlp_laden.pt",
+    "v_mlp_unladen_json": "models/generated/safety/mlp/v_mlp_unladen.json",
+    "v_mlp_unladen_pt": "models/generated/safety/mlp/v_mlp_unladen.pt"
+  },
+  "lock_sha256": "a52fa6dad11b67bcf32d454810110bf040bcbe766381ff32e493cd47c055ae48",
   "model_hashes": {
     "composite_params_sha256": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
     "opt6_kernel_sha256": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
-  },
-  "artifacts": {
-    "odd_contract": "models/source/odd_contract.json",
-    "model_geometry": "models/source/geometry/model_geometry.json",
-    "composite_params": "models/generated/reduced/composite_params.json",
-    "controller_limits": "models/generated/reduced/controller_limits.json",
-    "opt6_kernel": "models/generated/reduced/reduced_struct_fjac_f32_opt6.c",
-    "coupled_residual": "models/generated/safety/residuals/coupled_residual_fit.json",
-    "grid_unladen": "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz",
-    "grid_laden": "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz",
-    "v_mlp_unladen_json": "models/generated/safety/mlp/v_mlp_unladen.json",
-    "v_mlp_unladen_pt": "models/generated/safety/mlp/v_mlp_unladen.pt",
-    "v_mlp_laden_json": "models/generated/safety/mlp/v_mlp_laden.json",
-    "v_mlp_laden_pt": "models/generated/safety/mlp/v_mlp_laden.pt",
-    "safety_params_header": "balance_controller/c/include/balance_controller/bc_safety_params.h"
   }
 }

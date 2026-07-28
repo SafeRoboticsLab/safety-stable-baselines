@@ -30,6 +30,9 @@ _ARTIFACTS = {
     "model_geometry": "models/source/geometry/model_geometry.json",
     "composite_params": "models/generated/reduced/composite_params.json",
     "controller_limits": "models/generated/reduced/controller_limits.json",
+    "roll_constraint_params": (
+        "models/generated/safety/roll_constraint_params.json"
+    ),
     "opt6_kernel": (
         "models/generated/reduced/reduced_struct_fjac_f32_opt6.c"
     ),
