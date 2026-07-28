@@ -1,49 +1,55 @@
 {
-  "schema_version": 1,
-  "release": "vault-robot-v2.2-camera-inclusive-reduced-balance",
   "authority": {
-    "structure": "models/source/urdf/articulated_v2_2/robot.urdf",
-    "reduction_donor": "models/source/urdf/tucked_v2_2/robot.urdf",
     "actuator_behavior": "pinned 2026-07-26 HIL bundle inputs below",
+    "reduction_donor": "models/source/urdf/tucked_v2_2/robot.urdf",
+    "structure": "models/source/urdf/articulated_v2_2/robot.urdf",
     "usd": "visualization-only derived artifact"
+  },
+  "baseline_commits": {
+    "safety-stable-baselines": "2c4f73d70dbb717b580e736d7b4dc658833d0694",
+    "vault-controller": "46460a905b9119ed455f8426b0b45b88ad5ddb6c"
   },
   "bundle": {
     "name": "vault_robot_hil_model_bundle_2026-07-26",
     "zip_sha256": "1679a76b69fdd7de3a1fa1a575469344ea03f2d53b410981598a7a209c5afb4a"
   },
-  "source_urdfs": {
-    "articulated_v2_2": {
-      "path": "models/source/urdf/articulated_v2_2/robot.urdf",
-      "sha256": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09"
+  "controller_limits": {
+    "_pending_reconciliation": "20 N*m deployed clip versus 8 N*m safety-study clip; operator decision deferred",
+    "gravity": 9.81,
+    "motor_torque_limit": 20.0,
+    "theta_max": 1.3089969389957472,
+    "theta_warn": 1.0471975511965976,
+    "wheel_speed_limit": 60.0
+  },
+  "full_mass_properties_and_roll_constraint": {
+    "consumer_regeneration": {
+      "reason": "fcert consumers, robust grids, distilled networks, int8 artifacts, and parity gates must be regenerated from the new roll constraint after the consumer-side rebase",
+      "status": "pending"
     },
-    "tucked_v2_2": {
-      "path": "models/source/urdf/tucked_v2_2/robot.urdf",
-      "sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2"
-    }
+    "cross_path_tolerances": {
+      "com_abs": 1e-12,
+      "inertia_abs": 1e-11,
+      "mass_abs": 1e-12
+    },
+    "mass_properties": {
+      "path": "models/generated/mass_properties/mass_properties_tucked_v2_2.json",
+      "sha256": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149"
+    },
+    "roll_constraint": {
+      "load_case": "unladen_tucked",
+      "path": "models/generated/safety/roll_constraint_params.json",
+      "sha256": "91810c1018bb7e201e49656911230f2de81e94d521326ec28e4d0715cc80f6e8",
+      "shipped_policy": "symmetric worst-case bound and conservative lower static load for both wheels",
+      "support_model": "wheel-centre support lines; the 0.02 m cylinder half-width is recorded but not credited"
+    },
+    "status": "authority artifacts generated and independently cross-checked"
   },
   "geometry_contract": {
     "path": "models/source/geometry/model_geometry.json",
-    "wheel_contact_shape": "cylinder",
-    "wheel_contact_half_width_m": 0.02,
+    "provenance": "Operator-confirmed 2026-07-27 modelling choice used by the firmware simulation model and every certified artifact to date. Not mesh-derived; the 0.095 m mesh axial bounding-box extent is hub-to-hub visual geometry and must not be used as contact width.",
     "wheel_contact_full_width_m": 0.04,
-    "provenance": "Operator-confirmed 2026-07-27 modelling choice used by the firmware simulation model and every certified artifact to date. Not mesh-derived; the 0.095 m mesh axial bounding-box extent is hub-to-hub visual geometry and must not be used as contact width."
-  },
-  "odd_contract": {
-    "path": "models/source/odd_contract.json",
-    "sha256": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
-    "revision": "2026-07-28-v2.2-odd-pm4-policy-tiers",
-    "change_class": "domain widening; no safety threshold or disturbance-bound relaxation",
-    "velocity_bounds_mps": [
-      -4.0,
-      4.0
-    ],
-    "yaw_rate_bounds_radps": [
-      -4.0,
-      4.0
-    ],
-    "velocity_tier": "policy",
-    "velocity_tier_note": "Corrected 2026-07-28: the four-state reduced model has no speed-dependent term, so no solve can derive a velocity boundary; the bound is a declaration.",
-    "theta_failure_tier": "policy"
+    "wheel_contact_half_width_m": 0.02,
+    "wheel_contact_shape": "cylinder"
   },
   "hil_runtime": {
     "files": {
@@ -53,66 +59,100 @@
     },
     "verification": "provenance record; runtime files are not vendored"
   },
-  "reduced_generation": {
-    "repository": "vault_simulator",
-    "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
-    "branch": "feature/v2.2-model-release-toolchain",
-    "commit": "bdd5cb1aa62646bc67ac16ba8ca3eee395891acb",
-    "command": "bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --geometry-contract <vault-controller>/models/source/geometry/model_geometry.json --controller-limits <vault-controller>/models/generated/reduced/controller_limits.json --output-dir <staging>",
-    "source_urdf_sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
-    "staged_artifacts": {
-      "composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
-      "mass_properties_tucked_v2_2.json": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149",
-      "mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
-      "model_geometry.json": "e8bc2952730b08425fd5669df5b201d0a11ceeaae2ca88da28bf7c8b5f1c85d3",
-      "reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
-      "roll_constraint_params.json": "aa9e7cb18af6b5470b506344de12e37a6fbbacc79dcddeaa76030de6b1fa542e"
-    }
+  "int8_deployment": {
+    "artifact_role": "portable integer deployment approximation; not a certificate",
+    "commands": [
+      "PYTHONHASHSEED=0 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 /home/vault/miniforge3/envs/isaacs/bin/python3 firmware/safety_cert/o8_int8_quantize.py --seed=7 --weight-scope channel",
+      "/home/vault/miniforge3/envs/isaacs/bin/python3 balance_controller/c/tools/export_v_mlp_int8_c.py",
+      "MPLCONFIGDIR=/tmp/vault-mpl-qgap /home/vault/miniforge3/envs/isaacs/bin/python3 models/tools/quantization_gap_report.py",
+      "VAULT_SIMULATOR_ROOT=/home/vault/Documents/vault_simulator/.claude/worktrees/v22-toolchain /home/vault/miniforge3/envs/isaacs/bin/python3 balance_controller/c/test/test_value_int8_parity.py"
+    ],
+    "comparison_baseline_scope": "tensor",
+    "f32_int8_ordering": "diagnostic only; both networks are independently gated against the robust-grid oracle",
+    "gates": {
+      "channel": {
+        "laden": {
+          "delta": 0.11326838427170406,
+          "false_safe_nodes": 0,
+          "grid_safe_retention_pct": 74.85804246615893
+        },
+        "unladen": {
+          "delta": 0.11952633621058799,
+          "false_safe_nodes": 0,
+          "grid_safe_retention_pct": 76.78542173381558
+        }
+      },
+      "tensor": {
+        "laden": {
+          "delta": 0.10965233092819135,
+          "false_safe_nodes": 0,
+          "grid_safe_retention_pct": 74.90917408972254
+        },
+        "unladen": {
+          "delta": 0.19727363496878472,
+          "false_safe_nodes": 0,
+          "grid_safe_retention_pct": 67.45976736273015
+        }
+      }
+    },
+    "governing_gate": "zero int8-safe nodes where robust-grid value is negative",
+    "inputs": {
+      "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
+      "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
+      "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
+      "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111",
+      "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
+      "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
+      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
+      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
+      "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
+      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
+      "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea"
+    },
+    "model_version": "v2.2",
+    "outputs": {
+      "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
+      "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
+      "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
+      "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6"
+    },
+    "quantizer_commit": "f6ba3be8bcc88b51defd0334632e4e84784a30e3",
+    "runtime_sources": {
+      "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
+      "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
+      "balance_controller/c/src/safety.c": "7bf472328fe90d0246eeef5f9ac4dba37d5623cabb4c6fe0e6cb4b6aa290727d",
+      "balance_controller/c/src/value.c": "c21a3a4d74d8f3f2d1eb0edd5538d031d1c19296154ec066992880b11184da64",
+      "balance_controller/c/src/value_filter.c": "ae9690e6a7c15aea93f8c3690cba393b84ca6dd520e7314d25489e9e623dc2b4",
+      "balance_controller/c/src/value_int8.c": "34e117c686e63264afc54012940fc051a2be8aa2597db5d495def6c216cc577c",
+      "balance_controller/c/test/simulator_reference.py": "73a8cc82edb3490f2ad92ccef20e3d0757698d62c143720da4bc21c2c4a5d8c1",
+      "balance_controller/c/test/test_value_int8_parity.py": "30fd5fd2c16fd348b5981d0cec9c16a9e3b598c7a63cc5ae451726a84b67ca37"
+    },
+    "scope": "exhaustive grid nodes; not a continuum proof",
+    "status": "complete",
+    "weight_scope": "channel"
   },
-  "full_mass_properties_and_roll_constraint": {
-    "status": "authority artifacts generated and independently cross-checked",
-    "mass_properties": {
-      "path": "models/generated/mass_properties/mass_properties_tucked_v2_2.json",
-      "sha256": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149"
-    },
-    "roll_constraint": {
-      "path": "models/generated/safety/roll_constraint_params.json",
-      "sha256": "aa9e7cb18af6b5470b506344de12e37a6fbbacc79dcddeaa76030de6b1fa542e",
-      "load_case": "unladen_tucked",
-      "support_model": "wheel-centre support lines; the 0.02 m cylinder half-width is recorded but not credited",
-      "shipped_policy": "symmetric worst-case bound and conservative lower static load for both wheels"
-    },
-    "cross_path_tolerances": {
-      "mass_abs": 1e-12,
-      "com_abs": 1e-12,
-      "inertia_abs": 1e-11
-    },
-    "consumer_regeneration": {
-      "status": "pending",
-      "reason": "fcert consumers, robust grids, distilled networks, int8 artifacts, and parity gates must be regenerated from the new roll constraint after the consumer-side rebase"
+  "known_runtime_defects": {
+    "independent_abs_governor_query": {
+      "audit_date": "2026-07-27",
+      "mapped_safe_signed_unsafe_counts_20000": {
+        "inside_abs_v_le_1_5": {
+          "mu_0_3": 3,
+          "mu_0_6": 0,
+          "mu_1_0": 0
+        },
+        "inside_abs_v_le_5_5": {
+          "mu_0_3": 155,
+          "mu_0_6": 248,
+          "mu_1_0": 344
+        }
+      },
+      "regression_test": "balance_controller/tests/test_governor_known_permissive.py",
+      "reserve": 0.35,
+      "status": "behavior pinned; correction requires deployed-lane operator review"
     }
-  },
-  "controller_limits": {
-    "motor_torque_limit": 20.0,
-    "wheel_speed_limit": 60.0,
-    "theta_warn": 1.0471975511965976,
-    "theta_max": 1.3089969389957472,
-    "gravity": 9.81,
-    "_pending_reconciliation": "20 N*m deployed clip versus 8 N*m safety-study clip; operator decision deferred"
   },
   "model_contract": {
-    "state_order": [
-      "v",
-      "theta",
-      "theta_dot",
-      "psi_dot"
-    ],
-    "state_units": [
-      "m/s",
-      "rad",
-      "rad/s",
-      "rad/s"
-    ],
+    "frame": "right-handed base convention: +x forward, +y left, +z up",
     "input_order": [
       "tau_L",
       "tau_R"
@@ -125,97 +165,64 @@
       "v_ref",
       "psi_dot_ref"
     ],
-    "frame": "right-handed base convention: +x forward, +y left, +z up",
     "sign_conventions": {
+      "opt6_adapter": "kernel input is [tau_R,tau_L]; controller adapter swaps inputs and Jacobian columns",
       "theta": "positive means forward lean",
       "wheel_torque": "positive equal wheel torque drives forward and applies a backward body reaction",
-      "yaw": "tau_diff=tau_L-tau_R; psi_ddot=b_yaw_diff*tau_diff with b_yaw_diff<0",
-      "opt6_adapter": "kernel input is [tau_R,tau_L]; controller adapter swaps inputs and Jacobian columns"
-    }
+      "yaw": "tau_diff=tau_L-tau_R; psi_ddot=b_yaw_diff*tau_diff with b_yaw_diff<0"
+    },
+    "state_order": [
+      "v",
+      "theta",
+      "theta_dot",
+      "psi_dot"
+    ],
+    "state_units": [
+      "m/s",
+      "rad",
+      "rad/s",
+      "rad/s"
+    ]
   },
   "mujoco": {
-    "balance_golden": {
-      "path": "models/generated/mujoco/balance/balance_plant.xml",
-      "sha256": "cf274a714c176674ec66050da5ba942dfe25ab69ed994bdfb81ac2fb6d233d19",
-      "claim": "canonical reduced balance plant"
-    },
     "articulated_golden": {
-      "path": "models/generated/mujoco/articulated/articulated_v2_2.xml",
-      "sha256": "a8b3545e7ad80c4b1a4d8ab3f357fbdd9b49faf761039e5a39f78e3cf7241372",
       "claim": "structure and high-resolution visualization only; no identified actuator-behavior claim",
-      "visual_tier": "highres",
       "collision_tier": "contact-disabled source primitives for body-wheel cylinders; environment builders enable them and add remaining collision",
       "derived_visual_cache": {
-        "source_path": "models/assets/meshes_highres/base_link.STL",
         "generator_path": "models/generated/mujoco/articulated/generate.py",
         "runtime_path": "models/generated/mujoco/articulated/.generated_visual_assets/base_link.obj",
         "sha256": "765dbc44f99db64d1d0b51d01ea39da421c4d8c573f0411a8cf3159efac383ba",
+        "source_path": "models/assets/meshes_highres/base_link.STL",
         "tracked": false
-      }
+      },
+      "path": "models/generated/mujoco/articulated/articulated_v2_2.xml",
+      "sha256": "a8b3545e7ad80c4b1a4d8ab3f357fbdd9b49faf761039e5a39f78e3cf7241372",
+      "visual_tier": "highres"
+    },
+    "balance_golden": {
+      "claim": "canonical reduced balance plant",
+      "path": "models/generated/mujoco/balance/balance_plant.xml",
+      "sha256": "cf274a714c176674ec66050da5ba942dfe25ab69ed994bdfb81ac2fb6d233d19"
     }
   },
-  "usd": {
-    "path": "models/generated/usd/visualization_v2_2",
-    "directory_manifest_sha256": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
-    "stage_sha256": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
-    "claim": "visualization-only",
-    "visual_tier": "highres",
-    "stage_format": "usdc"
-  },
-  "toolchain": {
-    "reduced_generation": {
-      "python": "3.10.20",
-      "julia": "1.12.3"
-    },
-    "mujoco_generation_and_tests": {
-      "environment": "isaacs",
-      "python": "3.10.20",
-      "mujoco": "3.9.0"
-    },
-    "usd_export": {
-      "environment": "vault-hji",
-      "python": "3.12.13",
-      "mujoco": "3.9.0",
-      "pxr": "0.26.5",
-      "pillow": "12.2.0"
-    }
-  },
-  "baseline_commits": {
-    "vault-controller": "46460a905b9119ed455f8426b0b45b88ad5ddb6c",
-    "safety-stable-baselines": "2c4f73d70dbb717b580e736d7b4dc658833d0694"
+  "odd_contract": {
+    "change_class": "domain widening; no safety threshold or disturbance-bound relaxation",
+    "path": "models/source/odd_contract.json",
+    "revision": "2026-07-28-v2.2-odd-pm4-policy-tiers",
+    "sha256": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
+    "theta_failure_tier": "policy",
+    "velocity_bounds_mps": [
+      -4.0,
+      4.0
+    ],
+    "velocity_tier": "policy",
+    "velocity_tier_note": "Corrected 2026-07-28: the four-state reduced model has no speed-dependent term, so no solve can derive a velocity boundary; the bound is a declaration.",
+    "yaw_rate_bounds_radps": [
+      -4.0,
+      4.0
+    ]
   },
   "phase5_safety_artifacts": {
-    "status": "complete",
-    "model_version": "v2.2",
-    "toolchain": {
-      "repository": "vault_simulator",
-      "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
-      "branch": "feature/v2.2-model-release-toolchain",
-      "commit": "0d81e804eaf140b290e8a14d306bb001d9e634cc",
-      "promotion_commit": "cb55bb32dffdfa9c79ce1ed06a189f77ab0990c1",
-      "iteration_budget_commit": "65d8989770b30b3dc23fe3729925784f4ba2ef5d",
-      "int8_quantizer_commit": "f6ba3be8bcc88b51defd0334632e4e84784a30e3",
-      "python": "/home/vault/miniforge3/envs/isaacs/bin/python3"
-    },
-    "inputs": {
-      "models/generated/reduced/composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
-      "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
-      "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
-      "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
-      "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1"
-    },
-    "outputs": {
-      "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
-      "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
-      "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
-      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
-      "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
-      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
-      "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
-      "balance_controller/c/include/balance_controller/bc_safety_params.h": "08c008ff1d4ce7be678017462a80d173abab40ad31a1830ea3cd90c740c8510c",
-      "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a"
-    },
     "commands": [
       "PYTHON=/home/vault/miniforge3/envs/isaacs/bin/python3 JULIA=/home/vault/.julia/juliaup/julia-1.12.3+0.x64.linux.gnu/bin/julia bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --output-dir /tmp/v22-phase5-promote.i3bGrn --promote",
       "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/safety_cert/p1_fit_yaw_friction.py",
@@ -229,220 +236,213 @@
       "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/tools/export_safety_params.py",
       "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/tools/export_v_mlp_c.py"
     ],
-    "validation_commands": [
-      "make -C firmware/balance_controller/c clean all test-ci",
-      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_value_parity.py",
-      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_fcert_parity.py",
-      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_safety_parity.py",
-      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_value_filter_parity.py"
-    ],
     "gates": {
+      "claim": "grid-node conservatism; not a continuum proof",
+      "float32_distillation": {
+        "laden": {
+          "delta": 0.06481401216983795,
+          "false_safe_nodes": 0,
+          "grid_coverage_pct": 81.6127990527194,
+          "random_coverage_pct": 85.37958035113476,
+          "seed": 0
+        },
+        "unladen": {
+          "delta": 0.04793478888273239,
+          "false_safe_nodes": 0,
+          "grid_coverage_pct": 86.01781956119015,
+          "random_coverage_pct": 87.27774371551196,
+          "seed": 0
+        }
+      },
+      "int8_quantization": {
+        "laden": {
+          "delta": 0.11326838427170406,
+          "false_safe_nodes": 0,
+          "grid_coverage_pct": 74.85804246615893,
+          "random_coverage_pct": 79.17301103920822,
+          "seed": 7,
+          "weight_scope": "channel"
+        },
+        "unladen": {
+          "delta": 0.11952633621058799,
+          "false_safe_nodes": 0,
+          "grid_coverage_pct": 76.78542173381558,
+          "random_coverage_pct": 78.62700228832952,
+          "seed": 7,
+          "weight_scope": "channel"
+        }
+      },
       "robust_grid_convergence": {
-        "tolerance": 0.001,
         "iteration_budget": 1000,
         "terminal_dv": {
-          "unladen": {
-            "0.3": 0.000997949,
-            "0.4": 0.000997708,
-            "0.6": 0.000981163,
-            "1.0": 0.000991008
-          },
           "laden": {
             "0.3": 0.000991026,
             "0.4": 0.000995221,
             "0.5": 0.000975987,
             "0.6": 0.000975208,
             "1.0": 0.000976086
+          },
+          "unladen": {
+            "0.3": 0.000997949,
+            "0.4": 0.000997708,
+            "0.6": 0.000981163,
+            "1.0": 0.000991008
           }
-        }
-      },
-      "float32_distillation": {
-        "unladen": {
-          "seed": 0,
-          "delta": 0.04793478888273239,
-          "grid_coverage_pct": 86.01781956119015,
-          "random_coverage_pct": 87.27774371551196,
-          "false_safe_nodes": 0
         },
-        "laden": {
-          "seed": 0,
-          "delta": 0.06481401216983795,
-          "grid_coverage_pct": 81.6127990527194,
-          "random_coverage_pct": 85.37958035113476,
-          "false_safe_nodes": 0
-        }
-      },
-      "int8_quantization": {
-        "unladen": {
-          "seed": 7,
-          "weight_scope": "channel",
-          "delta": 0.11952633621058799,
-          "grid_coverage_pct": 76.78542173381558,
-          "random_coverage_pct": 78.62700228832952,
-          "false_safe_nodes": 0
-        },
-        "laden": {
-          "seed": 7,
-          "weight_scope": "channel",
-          "delta": 0.11326838427170406,
-          "grid_coverage_pct": 74.85804246615893,
-          "random_coverage_pct": 79.17301103920822,
-          "false_safe_nodes": 0
-        }
-      },
-      "claim": "grid-node conservatism; not a continuum proof"
-    }
-  },
-  "int8_deployment": {
-    "status": "complete",
-    "model_version": "v2.2",
-    "artifact_role": "portable integer deployment approximation; not a certificate",
-    "governing_gate": "zero int8-safe nodes where robust-grid value is negative",
-    "scope": "exhaustive grid nodes; not a continuum proof",
-    "f32_int8_ordering": "diagnostic only; both networks are independently gated against the robust-grid oracle",
-    "weight_scope": "channel",
-    "comparison_baseline_scope": "tensor",
-    "runtime_sources": {
-      "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
-      "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
-      "balance_controller/c/src/safety.c": "7bf472328fe90d0246eeef5f9ac4dba37d5623cabb4c6fe0e6cb4b6aa290727d",
-      "balance_controller/c/src/value.c": "c21a3a4d74d8f3f2d1eb0edd5538d031d1c19296154ec066992880b11184da64",
-      "balance_controller/c/src/value_filter.c": "ae9690e6a7c15aea93f8c3690cba393b84ca6dd520e7314d25489e9e623dc2b4",
-      "balance_controller/c/src/value_int8.c": "34e117c686e63264afc54012940fc051a2be8aa2597db5d495def6c216cc577c",
-      "balance_controller/c/test/simulator_reference.py": "73a8cc82edb3490f2ad92ccef20e3d0757698d62c143720da4bc21c2c4a5d8c1",
-      "balance_controller/c/test/test_value_int8_parity.py": "30fd5fd2c16fd348b5981d0cec9c16a9e3b598c7a63cc5ae451726a84b67ca37"
+        "tolerance": 0.001
+      }
     },
-    "quantizer_commit": "f6ba3be8bcc88b51defd0334632e4e84784a30e3",
     "inputs": {
+      "models/generated/reduced/composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
+      "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
+      "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
+      "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
+      "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1"
+    },
+    "model_version": "v2.2",
+    "outputs": {
+      "balance_controller/c/include/balance_controller/bc_safety_params.h": "08c008ff1d4ce7be678017462a80d173abab40ad31a1830ea3cd90c740c8510c",
+      "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a",
       "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
       "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
-      "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
-      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
-      "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
-      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
       "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
-      "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
-      "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
-      "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111"
+      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
+      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
+      "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
+      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
+      "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea"
     },
-    "outputs": {
-      "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
-      "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
-      "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
-      "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6"
+    "status": "complete",
+    "toolchain": {
+      "branch": "feature/v2.2-model-release-toolchain",
+      "commit": "0d81e804eaf140b290e8a14d306bb001d9e634cc",
+      "int8_quantizer_commit": "f6ba3be8bcc88b51defd0334632e4e84784a30e3",
+      "iteration_budget_commit": "65d8989770b30b3dc23fe3729925784f4ba2ef5d",
+      "promotion_commit": "cb55bb32dffdfa9c79ce1ed06a189f77ab0990c1",
+      "python": "/home/vault/miniforge3/envs/isaacs/bin/python3",
+      "repository": "vault_simulator",
+      "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git"
     },
-    "commands": [
-      "PYTHONHASHSEED=0 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 /home/vault/miniforge3/envs/isaacs/bin/python3 firmware/safety_cert/o8_int8_quantize.py --seed=7 --weight-scope channel",
-      "/home/vault/miniforge3/envs/isaacs/bin/python3 balance_controller/c/tools/export_v_mlp_int8_c.py",
-      "MPLCONFIGDIR=/tmp/vault-mpl-qgap /home/vault/miniforge3/envs/isaacs/bin/python3 models/tools/quantization_gap_report.py",
-      "VAULT_SIMULATOR_ROOT=/home/vault/Documents/vault_simulator/.claude/worktrees/v22-toolchain /home/vault/miniforge3/envs/isaacs/bin/python3 balance_controller/c/test/test_value_int8_parity.py"
-    ],
-    "gates": {
-      "tensor": {
-        "unladen": {
-          "delta": 0.19727363496878472,
-          "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 67.45976736273015
-        },
-        "laden": {
-          "delta": 0.10965233092819135,
-          "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 74.90917408972254
-        }
-      },
-      "channel": {
-        "unladen": {
-          "delta": 0.11952633621058799,
-          "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 76.78542173381558
-        },
-        "laden": {
-          "delta": 0.11326838427170406,
-          "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 74.85804246615893
-        }
-      }
+    "validation_commands": [
+      "make -C firmware/balance_controller/c clean all test-ci",
+      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_value_parity.py",
+      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_fcert_parity.py",
+      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_safety_parity.py",
+      "/home/vault/miniforge3/envs/isaacs/bin/python3 firmware/balance_controller/c/test/test_value_filter_parity.py"
+    ]
+  },
+  "reduced_generation": {
+    "branch": "feature/v2.2-model-release-toolchain",
+    "command": "bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --geometry-contract <vault-controller>/models/source/geometry/model_geometry.json --controller-limits <vault-controller>/models/generated/reduced/controller_limits.json --output-dir <staging>",
+    "commit": "a2edf1fa1b2a83980c4aa0742acb02d429aaca36",
+    "repository": "vault_simulator",
+    "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
+    "source_urdf_sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
+    "staged_artifacts": {
+      "composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
+      "mass_properties_tucked_v2_2.json": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149",
+      "mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
+      "model_geometry.json": "852d38a5980a80b47708bb9e33c2ad104fb6109f0ef3135f513039b2ca2df9e9",
+      "reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
+      "roll_constraint_params.json": "91810c1018bb7e201e49656911230f2de81e94d521326ec28e4d0715cc80f6e8"
     }
   },
-  "known_runtime_defects": {
-    "independent_abs_governor_query": {
-      "status": "behavior pinned; correction requires deployed-lane operator review",
-      "audit_date": "2026-07-27",
-      "reserve": 0.35,
-      "mapped_safe_signed_unsafe_counts_20000": {
-        "inside_abs_v_le_1_5": {
-          "mu_0_3": 3,
-          "mu_0_6": 0,
-          "mu_1_0": 0
-        },
-        "inside_abs_v_le_5_5": {
-          "mu_0_3": 155,
-          "mu_0_6": 248,
-          "mu_1_0": 344
-        }
-      },
-      "regression_test": "balance_controller/tests/test_governor_known_permissive.py"
-    }
-  },
+  "release": "vault-robot-v2.2-camera-inclusive-reduced-balance",
   "release_files": {
     "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
-    "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
     "balance_controller/c/include/balance_controller/bc_safety_params.h": "08c008ff1d4ce7be678017462a80d173abab40ad31a1830ea3cd90c740c8510c",
+    "balance_controller/c/include/balance_controller/bc_safety_params.h.v2_1_backup_20260726": "a0c2265c58db1b4283ca3722cee3002e830067e2f46f8c6adcecfec9c681d9f3",
+    "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
     "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a",
+    "balance_controller/c/include/balance_controller/value_weights.h.v2_1_backup_20260726": "de787e32902a32e0c02ac5478d95de0b942a6ef3a1aa624b22e435a7fa6a00ac",
     "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
-    "balance_controller/c/tools/export_safety_params.py": "5099feb1a4c923dad4c770a357d3f3df0596d45928cb9e4815a657dbf3cd8830",
-    "balance_controller/c/tools/export_v_mlp_c.py": "133affa1e111d5bd71e3646c6441a9c0fb2b9021360b86e0c31c89ed7c3c8963",
-    "balance_controller/c/tools/export_v_mlp_int8_c.py": "3be43f9d1f7298f9fcc254d614a6aeef31acd8ee3bdc48ce1dc57dcbcf1a6166",
     "balance_controller/c/src/safety.c": "7bf472328fe90d0246eeef5f9ac4dba37d5623cabb4c6fe0e6cb4b6aa290727d",
     "balance_controller/c/src/value.c": "c21a3a4d74d8f3f2d1eb0edd5538d031d1c19296154ec066992880b11184da64",
     "balance_controller/c/src/value_filter.c": "ae9690e6a7c15aea93f8c3690cba393b84ca6dd520e7314d25489e9e623dc2b4",
     "balance_controller/c/src/value_int8.c": "34e117c686e63264afc54012940fc051a2be8aa2597db5d495def6c216cc577c",
     "balance_controller/c/test/simulator_reference.py": "73a8cc82edb3490f2ad92ccef20e3d0757698d62c143720da4bc21c2c4a5d8c1",
     "balance_controller/c/test/test_value_int8_parity.py": "30fd5fd2c16fd348b5981d0cec9c16a9e3b598c7a63cc5ae451726a84b67ca37",
+    "balance_controller/c/tools/export_safety_params.py": "5099feb1a4c923dad4c770a357d3f3df0596d45928cb9e4815a657dbf3cd8830",
+    "balance_controller/c/tools/export_v_mlp_c.py": "133affa1e111d5bd71e3646c6441a9c0fb2b9021360b86e0c31c89ed7c3c8963",
+    "balance_controller/c/tools/export_v_mlp_int8_c.py": "3be43f9d1f7298f9fcc254d614a6aeef31acd8ee3bdc48ce1dc57dcbcf1a6166",
     "balance_controller/tests/test_governor_known_permissive.py": "12339dfc516fe8056a9a97905b50cff7d3b3203429f9466ba0f3f6e4aa327172",
+    "models/generated/mass_properties/mass_properties_tucked_v2_2.json": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149",
     "models/generated/mujoco/articulated/articulated_v2_2.xml": "a8b3545e7ad80c4b1a4d8ab3f357fbdd9b49faf761039e5a39f78e3cf7241372",
     "models/generated/mujoco/articulated/generate.py": "cb8cfc7e8a928f7c278a2938c1040934d5c4762a83e2d62ff35a7d1953e8d220",
     "models/generated/mujoco/balance/balance_plant.xml": "cf274a714c176674ec66050da5ba942dfe25ab69ed994bdfb81ac2fb6d233d19",
     "models/generated/mujoco/balance/generate.py": "d201489fe5f278011b91f5547853c39be77857ce7d262ed0954bec763bfc8613",
     "models/generated/reduced/composite_params.json": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
     "models/generated/reduced/controller_limits.json": "6803c447601ea2828ceb6fcfc5aa8974466ad275d3f635cd07097c3704bd41b5",
-    "models/generated/mass_properties/mass_properties_tucked_v2_2.json": "f38d35e1cc508661f100c68720744b130cee9b9092efa565454be45e62e72149",
     "models/generated/reduced/mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
     "models/generated/reduced/model_geometry.json": "e8bc2952730b08425fd5669df5b201d0a11ceeaae2ca88da28bf7c8b5f1c85d3",
     "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
+    "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
+    "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
+    "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
+    "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
+    "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6",
+    "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
+    "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111",
+    "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
+    "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
+    "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
+    "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
+    "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
+    "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
+    "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
+    "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
+    "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
+    "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1",
+    "models/generated/safety/roll_constraint_params.json": "91810c1018bb7e201e49656911230f2de81e94d521326ec28e4d0715cc80f6e8",
     "models/generated/usd/visualization_v2_2/articulated_v2_2.usdc": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
     "models/generated/usd/visualization_v2_2/manifest.json": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
     "models/source/MODEL_SOURCE_MANIFEST.json": "57a6e9ee7c0b205b2bc392ab442ff9f41093fd62c36321991aa7927c1559ffc2",
-    "models/source/odd_contract.json": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
     "models/source/geometry/model_geometry.json": "d808fc5fd35188ce77e115f80fae8bf1547ce2eab43a12a704d61859c6ab46f5",
+    "models/source/odd_contract.json": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
     "models/source/urdf/articulated_v2_2/articulated_v2_2_manifest.json": "f01bb0748bfcb575c7aa92f68ba0e46d48c5129582d4296ee9b82b19a0526b6b",
     "models/source/urdf/articulated_v2_2/model_geometry.json": "852d38a5980a80b47708bb9e33c2ad104fb6109f0ef3135f513039b2ca2df9e9",
     "models/source/urdf/articulated_v2_2/robot.urdf": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09",
     "models/source/urdf/tucked_v2_2/robot.urdf": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "models/tools/export_usd.py": "f1b35867b44d084eb2940cee464f641cf5cfb8705dc6b9d2a4f4b69118836442",
-    "models/tools/verify_model_release.py": "6bdac8be1f7dc8c537ac8807545c2763076d865ed1a35be3ea98e547fc748ee5",
-    "models/tools/verify_urdf_composite.py": "a099f9dac59816afc2cc5b8d0fe4f1567cb9a8701559d4932c5a2744fb1a13e9",
     "models/tools/quantization_gap_report.py": "f548d7eaa8c3746bf7a1e3cbedc8c04663d42d6a4f093d24c3104958836618ff",
-    "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
-    "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
-    "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1",
-    "models/generated/safety/roll_constraint_params.json": "aa9e7cb18af6b5470b506344de12e37a6fbbacc79dcddeaa76030de6b1fa542e",
-    "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
-    "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
-    "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
-    "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
-    "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-    "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
-    "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
-    "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
-    "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
-    "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
-    "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111",
-    "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
-    "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
-    "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6",
-    "balance_controller/c/include/balance_controller/bc_safety_params.h.v2_1_backup_20260726": "a0c2265c58db1b4283ca3722cee3002e830067e2f46f8c6adcecfec9c681d9f3",
-    "balance_controller/c/include/balance_controller/value_weights.h.v2_1_backup_20260726": "de787e32902a32e0c02ac5478d95de0b942a6ef3a1aa624b22e435a7fa6a00ac"
+    "models/tools/verify_model_release.py": "6bdac8be1f7dc8c537ac8807545c2763076d865ed1a35be3ea98e547fc748ee5",
+    "models/tools/verify_urdf_composite.py": "50c22e1ecb4fda51c3f97ffc3d97331aa276c5ddcfa5ecac4726195ae43be355"
+  },
+  "schema_version": 1,
+  "source_urdfs": {
+    "articulated_v2_2": {
+      "path": "models/source/urdf/articulated_v2_2/robot.urdf",
+      "sha256": "5f0beb371467acc66e9f743cc02018cc64eba15662627df283537dc267a40b09"
+    },
+    "tucked_v2_2": {
+      "path": "models/source/urdf/tucked_v2_2/robot.urdf",
+      "sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2"
+    }
+  },
+  "toolchain": {
+    "mujoco_generation_and_tests": {
+      "environment": "isaacs",
+      "mujoco": "3.9.0",
+      "python": "3.10.20"
+    },
+    "reduced_generation": {
+      "julia": "1.12.3",
+      "python": "3.10.20"
+    },
+    "usd_export": {
+      "environment": "vault-hji",
+      "mujoco": "3.9.0",
+      "pillow": "12.2.0",
+      "pxr": "0.26.5",
+      "python": "3.12.13"
+    }
+  },
+  "usd": {
+    "claim": "visualization-only",
+    "directory_manifest_sha256": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
+    "path": "models/generated/usd/visualization_v2_2",
+    "stage_format": "usdc",
+    "stage_sha256": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
+    "visual_tier": "highres"
   }
 }
