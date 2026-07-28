@@ -23,8 +23,24 @@
   },
   "full_mass_properties_and_roll_constraint": {
     "consumer_regeneration": {
-      "reason": "fcert consumers, robust grids, distilled networks, int8 artifacts, and parity gates must be regenerated from the new roll constraint after the consumer-side rebase",
-      "status": "pending"
+      "evidence": {
+        "controller_commit": "2968786f1953be686dec0650243d44314119430c",
+        "distilled_networks": "float32 unladen delta 0.050577 / laden 0.090200, zero false-safe at every grid node in both modes",
+        "fcert_consumers": "balance_controller/c/src/fcert.c and safety-stable-baselines vault/f_cert.py both take the whole-robot CoM height and the conservative lower static wheel load from roll_constraint_params.json; the ambiguous BC_FC_H was removed so stale consumers fail to compile",
+        "int8_artifacts": "channel scope shipped as the release default, tensor retained as the comparison baseline; zero false-safe grid nodes in every mode and friction slice",
+        "laden_bound_source": "BC_A_TIP_LADEN is now read from the laden grid's own roll_a_tip_m_s2 rather than re-derived; the previous exporter formula scaled h_cm as though it were a height and produced 6.32652 against the grid's 5.326611",
+        "parity_gates": "C/Python int8 max|error| = 0.000e+00 in both modes after a clean rebuild",
+        "robust_grids": "both re-solved on the locked +-4 ODD contract against the generated roll constraint; each grid persists roll_constraint_sha256, the nominal and perturbed heights, the dh fraction, and the nominal lateral offset with its uncertainty declared zero and unmeasured",
+        "simulator_commit": "5c2494f537756665d6885d31d749f54a3b21a7e4"
+      },
+      "not_established": [
+        "no hardware witness; all evidence is simulation or source-level",
+        "the lateral offset is nominal and unperturbed because its variation is unmeasured",
+        "dh=0.30 is an unvalidated height-uncertainty assumption, not payload geometry",
+        "conservatism is exhaustive at grid nodes, which is not a continuum proof"
+      ],
+      "reason": "fcert consumers, robust grids, distilled networks, int8 artifacts, and parity gates regenerated from the generated roll constraint",
+      "status": "complete"
     },
     "cross_path_tolerances": {
       "com_abs": 1e-12,
@@ -72,49 +88,49 @@
     "gates": {
       "channel": {
         "laden": {
-          "delta": 0.11326838427170406,
+          "delta": 0.16053240130712815,
           "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 74.85804246615893
+          "grid_safe_retention_pct": 78.84740139557587
         },
         "unladen": {
-          "delta": 0.11952633621058799,
+          "delta": 0.11704368245353675,
           "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 76.78542173381558
+          "grid_safe_retention_pct": 82.50047453337551
         }
       },
       "tensor": {
         "laden": {
-          "delta": 0.10965233092819135,
+          "delta": 0.14808894660471156,
           "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 74.90917408972254
+          "grid_safe_retention_pct": 79.1022489575844
         },
         "unladen": {
-          "delta": 0.19727363496878472,
+          "delta": 0.09754422458909556,
           "false_safe_nodes": 0,
-          "grid_safe_retention_pct": 67.45976736273015
+          "grid_safe_retention_pct": 83.55215553190878
         }
       }
     },
     "governing_gate": "zero int8-safe nodes where robust-grid value is negative",
     "inputs": {
-      "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
-      "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
+      "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "0ecb475f6b0990b83895824c0c5a9c76b7ad62c736470a5b5071880ea022e62c",
+      "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "ba628abdb4a8f75f98e162e37491f8bc44896c38d803bf0e761b13470615a39c",
       "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
-      "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111",
-      "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
-      "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
-      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
-      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
-      "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
-      "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea"
+      "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "8350ad96ac05006be5ced010e7560674228728b7278ff95bc4f2f8b2f09617d1",
+      "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "5b5def8d24c3a700e1b12d1ee7625289ca43814500d80290e8e7ea038bdc9617",
+      "models/generated/safety/int8/v_mlp_laden_int8.npz": "54880c6e603d36daae32d0122d218b5f82815a0d0a4c1d531172865737b3032c",
+      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "c2622c6b8e545c19bfffb8506f2d2bf2bc94929d38b649ed80e3fe7de8bc3ccc",
+      "models/generated/safety/mlp/v_mlp_laden.json": "790e3e3cadaeda3d7a0c123d56d8d10da866bbcdc2e4d1afba024bc8712fe74e",
+      "models/generated/safety/mlp/v_mlp_laden.pt": "e03fcac0ad86623035c106f74ea8740514118e67c383375ea3e298a08a194931",
+      "models/generated/safety/mlp/v_mlp_unladen.json": "9c466fe5936e5da46a05ac71d0a1450126ae05509e2d2179a4db345e281396ee",
+      "models/generated/safety/mlp/v_mlp_unladen.pt": "b9155f3467b76d8c5de3e42530a20b59ed79a65fd354c904ef357a50cd366211"
     },
     "model_version": "v2.2",
     "outputs": {
-      "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
-      "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
-      "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
-      "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6"
+      "balance_controller/c/include/balance_controller/value_weights_int8.h": "6d746a5a2415c87afdc46b06789acbc48d081d02336cab9267d998d3ad99f2fe",
+      "models/generated/safety/int8/QUANTIZATION_GAP.json": "d475dda39b7741a8db5264ed8c831f73d3a9ee8440bd10382ed0e555274a0833",
+      "models/generated/safety/int8/QUANTIZATION_GAP.md": "20bfb1987a57862c142cc124093d2ffc7793c25409f30701da5a2e06b029f9d1",
+      "models/generated/safety/int8/quantization_gap_slices.pdf": "6016573adbb3a89ef7053087aa6c294f888f90f2419072b4e8959a7aaec61652"
     },
     "quantizer_commit": "f6ba3be8bcc88b51defd0334632e4e84784a30e3",
     "runtime_sources": {
@@ -240,34 +256,34 @@
       "claim": "grid-node conservatism; not a continuum proof",
       "float32_distillation": {
         "laden": {
-          "delta": 0.06481401216983795,
+          "delta": 0.09020022642612457,
           "false_safe_nodes": 0,
-          "grid_coverage_pct": 81.6127990527194,
-          "random_coverage_pct": 85.37958035113476,
+          "grid_coverage_pct": 86.45129475360343,
+          "random_coverage_pct": 88.32319492197831,
           "seed": 0
         },
         "unladen": {
-          "delta": 0.04793478888273239,
+          "delta": 0.05057727140188217,
           "false_safe_nodes": 0,
-          "grid_coverage_pct": 86.01781956119015,
-          "random_coverage_pct": 87.27774371551196,
+          "grid_coverage_pct": 89.55405366541083,
+          "random_coverage_pct": 91.70729834529888,
           "seed": 0
         }
       },
       "int8_quantization": {
         "laden": {
-          "delta": 0.11326838427170406,
+          "delta": 0.16053240130712815,
           "false_safe_nodes": 0,
-          "grid_coverage_pct": 74.85804246615893,
-          "random_coverage_pct": 79.17301103920822,
+          "grid_coverage_pct": 78.84740139557587,
+          "random_coverage_pct": 80.49500981157554,
           "seed": 7,
           "weight_scope": "channel"
         },
         "unladen": {
-          "delta": 0.11952633621058799,
+          "delta": 0.11704368245353675,
           "false_safe_nodes": 0,
-          "grid_coverage_pct": 76.78542173381558,
-          "random_coverage_pct": 78.62700228832952,
+          "grid_coverage_pct": 82.50047453337551,
+          "random_coverage_pct": 84.84671173182637,
           "seed": 7,
           "weight_scope": "channel"
         }
@@ -276,17 +292,17 @@
         "iteration_budget": 1000,
         "terminal_dv": {
           "laden": {
-            "0.3": 0.000991026,
-            "0.4": 0.000995221,
-            "0.5": 0.000975987,
-            "0.6": 0.000975208,
-            "1.0": 0.000976086
+            "0.3": 0.000994007,
+            "0.4": 0.000999996,
+            "0.5": 0.000985737,
+            "0.6": 0.000960092,
+            "1.0": 0.000945935
           },
           "unladen": {
-            "0.3": 0.000997949,
-            "0.4": 0.000997708,
-            "0.6": 0.000981163,
-            "1.0": 0.000991008
+            "0.3": 0.000993757,
+            "0.4": 0.000999483,
+            "0.6": 0.000992412,
+            "1.0": 0.000978397
           }
         },
         "tolerance": 0.001
@@ -301,16 +317,16 @@
     },
     "model_version": "v2.2",
     "outputs": {
-      "balance_controller/c/include/balance_controller/bc_safety_params.h": "08c008ff1d4ce7be678017462a80d173abab40ad31a1830ea3cd90c740c8510c",
-      "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a",
-      "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
-      "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
-      "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
-      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
-      "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
-      "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-      "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
-      "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea"
+      "balance_controller/c/include/balance_controller/bc_safety_params.h": "d3f617ac070963c7f6e328dc2c053254a7a1e6528e2798efd9a6c91124e6711b",
+      "balance_controller/c/include/balance_controller/value_weights.h": "3d429b526abafdb3e8639b9b09438295315dae4a6704712374787f0855e399bf",
+      "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "0ecb475f6b0990b83895824c0c5a9c76b7ad62c736470a5b5071880ea022e62c",
+      "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "ba628abdb4a8f75f98e162e37491f8bc44896c38d803bf0e761b13470615a39c",
+      "models/generated/safety/int8/v_mlp_laden_int8.npz": "54880c6e603d36daae32d0122d218b5f82815a0d0a4c1d531172865737b3032c",
+      "models/generated/safety/int8/v_mlp_unladen_int8.npz": "c2622c6b8e545c19bfffb8506f2d2bf2bc94929d38b649ed80e3fe7de8bc3ccc",
+      "models/generated/safety/mlp/v_mlp_laden.json": "790e3e3cadaeda3d7a0c123d56d8d10da866bbcdc2e4d1afba024bc8712fe74e",
+      "models/generated/safety/mlp/v_mlp_laden.pt": "e03fcac0ad86623035c106f74ea8740514118e67c383375ea3e298a08a194931",
+      "models/generated/safety/mlp/v_mlp_unladen.json": "9c466fe5936e5da46a05ac71d0a1450126ae05509e2d2179a4db345e281396ee",
+      "models/generated/safety/mlp/v_mlp_unladen.pt": "b9155f3467b76d8c5de3e42530a20b59ed79a65fd354c904ef357a50cd366211"
     },
     "status": "complete",
     "toolchain": {
@@ -334,7 +350,7 @@
   "reduced_generation": {
     "branch": "feature/v2.2-model-release-toolchain",
     "command": "bash scripts/regen_robot_model.sh --urdf robot_models/delivery_robot_v2_tucked/delivery_robot.urdf --geometry-contract <vault-controller>/models/source/geometry/model_geometry.json --controller-limits <vault-controller>/models/generated/reduced/controller_limits.json --output-dir <staging>",
-    "commit": "a2edf1fa1b2a83980c4aa0742acb02d429aaca36",
+    "commit": "5c2494f537756665d6885d31d749f54a3b21a7e4",
     "repository": "vault_simulator",
     "repository_url": "git@github.com:rshi159/hybrid_simulator_v3.git",
     "source_urdf_sha256": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
@@ -350,19 +366,19 @@
   "release": "vault-robot-v2.2-camera-inclusive-reduced-balance",
   "release_files": {
     "balance_controller/c/Makefile": "7e2f838336c2c7556d53df6583d8039c2c2f675f8a342bebb5ec38bdaf1b8d8c",
-    "balance_controller/c/include/balance_controller/bc_safety_params.h": "08c008ff1d4ce7be678017462a80d173abab40ad31a1830ea3cd90c740c8510c",
+    "balance_controller/c/include/balance_controller/bc_safety_params.h": "d3f617ac070963c7f6e328dc2c053254a7a1e6528e2798efd9a6c91124e6711b",
     "balance_controller/c/include/balance_controller/bc_safety_params.h.v2_1_backup_20260726": "a0c2265c58db1b4283ca3722cee3002e830067e2f46f8c6adcecfec9c681d9f3",
     "balance_controller/c/include/balance_controller/value.h": "efc4ab2715aa27c80e717c329c29d8fa3ec3c47ad7230e18407aae09a81e9e39",
-    "balance_controller/c/include/balance_controller/value_weights.h": "942e60c0c331267445a50cc420b4718ad05ab03b6c34a240261dc437c1c4b78a",
+    "balance_controller/c/include/balance_controller/value_weights.h": "3d429b526abafdb3e8639b9b09438295315dae4a6704712374787f0855e399bf",
     "balance_controller/c/include/balance_controller/value_weights.h.v2_1_backup_20260726": "de787e32902a32e0c02ac5478d95de0b942a6ef3a1aa624b22e435a7fa6a00ac",
-    "balance_controller/c/include/balance_controller/value_weights_int8.h": "1886ef41b4ebca53287be66f6a6465d80d122b180987f2a9e4fb102f737932e9",
+    "balance_controller/c/include/balance_controller/value_weights_int8.h": "6d746a5a2415c87afdc46b06789acbc48d081d02336cab9267d998d3ad99f2fe",
     "balance_controller/c/src/safety.c": "7bf472328fe90d0246eeef5f9ac4dba37d5623cabb4c6fe0e6cb4b6aa290727d",
     "balance_controller/c/src/value.c": "c21a3a4d74d8f3f2d1eb0edd5538d031d1c19296154ec066992880b11184da64",
     "balance_controller/c/src/value_filter.c": "ae9690e6a7c15aea93f8c3690cba393b84ca6dd520e7314d25489e9e623dc2b4",
     "balance_controller/c/src/value_int8.c": "34e117c686e63264afc54012940fc051a2be8aa2597db5d495def6c216cc577c",
     "balance_controller/c/test/simulator_reference.py": "73a8cc82edb3490f2ad92ccef20e3d0757698d62c143720da4bc21c2c4a5d8c1",
     "balance_controller/c/test/test_value_int8_parity.py": "30fd5fd2c16fd348b5981d0cec9c16a9e3b598c7a63cc5ae451726a84b67ca37",
-    "balance_controller/c/tools/export_safety_params.py": "5099feb1a4c923dad4c770a357d3f3df0596d45928cb9e4815a657dbf3cd8830",
+    "balance_controller/c/tools/export_safety_params.py": "5d91792771cdc7fcfe1a59ed46287df616eb93bebf0b4da6a4b513ea191269e4",
     "balance_controller/c/tools/export_v_mlp_c.py": "133affa1e111d5bd71e3646c6441a9c0fb2b9021360b86e0c31c89ed7c3c8963",
     "balance_controller/c/tools/export_v_mlp_int8_c.py": "3be43f9d1f7298f9fcc254d614a6aeef31acd8ee3bdc48ce1dc57dcbcf1a6166",
     "balance_controller/tests/test_governor_known_permissive.py": "12339dfc516fe8056a9a97905b50cff7d3b3203429f9466ba0f3f6e4aa327172",
@@ -376,20 +392,20 @@
     "models/generated/reduced/mc_upright.json": "2059a552ff30d715b708ad695bc0078a57f35aca71d3fdd08c67f5bb1a3b331a",
     "models/generated/reduced/model_geometry.json": "e8bc2952730b08425fd5669df5b201d0a11ceeaae2ca88da28bf7c8b5f1c85d3",
     "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
-    "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "62b84c2bbc518958766959f71251af3a4e04be2039f16c1c4ef0853f56f9b92b",
-    "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "c462cade4de5af4333af31f94c939cdc37044968c98c97b195c830067b5b5681",
-    "models/generated/safety/int8/QUANTIZATION_GAP.json": "fab1ae9c9564931d65a77c0042bb28c8d04ee9c8f7821b20abea129629aec2ce",
-    "models/generated/safety/int8/QUANTIZATION_GAP.md": "5157302f7a103ab31aaf95d30ba0e184d2295a39ed30b5d443f070089b985c46",
-    "models/generated/safety/int8/quantization_gap_slices.pdf": "feb11c3eadad07be819e7f00034f10d4031d710179601108ee759538688a02c6",
+    "models/generated/safety/grids/robust_odd_dh0_dm0_bump0.npz": "0ecb475f6b0990b83895824c0c5a9c76b7ad62c736470a5b5071880ea022e62c",
+    "models/generated/safety/grids/robust_odd_dh30_dm20_bump0.npz": "ba628abdb4a8f75f98e162e37491f8bc44896c38d803bf0e761b13470615a39c",
+    "models/generated/safety/int8/QUANTIZATION_GAP.json": "d475dda39b7741a8db5264ed8c831f73d3a9ee8440bd10382ed0e555274a0833",
+    "models/generated/safety/int8/QUANTIZATION_GAP.md": "20bfb1987a57862c142cc124093d2ffc7793c25409f30701da5a2e06b029f9d1",
+    "models/generated/safety/int8/quantization_gap_slices.pdf": "6016573adbb3a89ef7053087aa6c294f888f90f2419072b4e8959a7aaec61652",
     "models/generated/safety/int8/tensor_baseline/README.md": "c1bc7595f003dfdd8b28e71b5e93ac3c618e76e3fdd61c14c83072934ede04ff",
-    "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "d6311dfa026bdf878537ff6996663d0df60d38d7699a257ad4e0ed748b60c111",
-    "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "95c2e6ecb6f2dee88eb9bd768891ee7444ad8adea82c0efd09f9ff58308be62d",
-    "models/generated/safety/int8/v_mlp_laden_int8.npz": "cb54d327184047fee366f632b1384310f37c14ba1562442385c872e337b7131d",
-    "models/generated/safety/int8/v_mlp_unladen_int8.npz": "06bd5307ca608139309ba910cd82514dee2ed69b27cb3743757f1d5d913492bc",
-    "models/generated/safety/mlp/v_mlp_laden.json": "2076a156beb50e0216d6a6e2d43c572ae8491862fa29087d64d61011a461234f",
-    "models/generated/safety/mlp/v_mlp_laden.pt": "634fb951238d2d831ac41c62d26f2ac7b0737f08db34afaf47c458e6d689a9a9",
-    "models/generated/safety/mlp/v_mlp_unladen.json": "ad0acdae2bdefa7525ef7ac06a41988baef0866d25935b85990cdc5971ec7775",
-    "models/generated/safety/mlp/v_mlp_unladen.pt": "3ffdced24035d35c2930abd182aa664f91f5b79b2e83692e68e44ebb444ed8ea",
+    "models/generated/safety/int8/tensor_baseline/v_mlp_laden_int8.npz": "8350ad96ac05006be5ced010e7560674228728b7278ff95bc4f2f8b2f09617d1",
+    "models/generated/safety/int8/tensor_baseline/v_mlp_unladen_int8.npz": "5b5def8d24c3a700e1b12d1ee7625289ca43814500d80290e8e7ea038bdc9617",
+    "models/generated/safety/int8/v_mlp_laden_int8.npz": "54880c6e603d36daae32d0122d218b5f82815a0d0a4c1d531172865737b3032c",
+    "models/generated/safety/int8/v_mlp_unladen_int8.npz": "c2622c6b8e545c19bfffb8506f2d2bf2bc94929d38b649ed80e3fe7de8bc3ccc",
+    "models/generated/safety/mlp/v_mlp_laden.json": "790e3e3cadaeda3d7a0c123d56d8d10da866bbcdc2e4d1afba024bc8712fe74e",
+    "models/generated/safety/mlp/v_mlp_laden.pt": "e03fcac0ad86623035c106f74ea8740514118e67c383375ea3e298a08a194931",
+    "models/generated/safety/mlp/v_mlp_unladen.json": "9c466fe5936e5da46a05ac71d0a1450126ae05509e2d2179a4db345e281396ee",
+    "models/generated/safety/mlp/v_mlp_unladen.pt": "b9155f3467b76d8c5de3e42530a20b59ed79a65fd354c904ef357a50cd366211",
     "models/generated/safety/residuals/coupled_residual_fit.json": "23b210f85c50b7b8088679787d66db77ad4c2cbffaccebd48cd50e864702ccd6",
     "models/generated/safety/residuals/r_yaw_fit.json": "ee54708745f6edd132d372e2d25a3b462e20e15291e760f785413578d2b79118",
     "models/generated/safety/response_bounds/response_bounds.json": "c38b1f0ea33c6811731ec05ca5c6bf818dd03309b1a3acb881d9bcec17ef4eb1",
@@ -405,7 +421,7 @@
     "models/source/urdf/tucked_v2_2/robot.urdf": "8ada66c1bc2f23fe5c10bfcbf4e5ba88b5548f89bebf4578f5014b73ead571d2",
     "models/tools/export_usd.py": "f1b35867b44d084eb2940cee464f641cf5cfb8705dc6b9d2a4f4b69118836442",
     "models/tools/quantization_gap_report.py": "f548d7eaa8c3746bf7a1e3cbedc8c04663d42d6a4f093d24c3104958836618ff",
-    "models/tools/verify_model_release.py": "6bdac8be1f7dc8c537ac8807545c2763076d865ed1a35be3ea98e547fc748ee5",
+    "models/tools/verify_model_release.py": "53248e4be3b092db93df1594a5db4ff7c55bd1719c5c672ce25a7013009f047c",
     "models/tools/verify_urdf_composite.py": "50c22e1ecb4fda51c3f97ffc3d97331aa276c5ddcfa5ecac4726195ae43be355"
   },
   "schema_version": 1,
