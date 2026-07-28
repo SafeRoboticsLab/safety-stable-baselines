@@ -32,7 +32,8 @@ it is cached.
 ## Conventions
 - Python, Google style. State `x=[v,theta,theta_dot,psi_dot]`; control `u=[tau_L,tau_R]` (N·m);
   `mu` = friction. The value function is mu-aware.
-- Constants live in `config.py` — import from there, don't hard-code params or ODD bounds.
+- Import runtime constants through `config.py`. Robot and ODD values originate
+  in the hash-locked controller release; do not hard-code or duplicate them.
 - Keep modules importable without heavy deps unless used (torch only in distill/filter/train;
   mujoco only in mujoco_plant/evaluate).
 

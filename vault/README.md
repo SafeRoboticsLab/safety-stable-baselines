@@ -16,7 +16,7 @@ This is **one of two repos**:
 | module | what it is |
 |--------|-----------|
 | `model_release.py` | strict loader for the sibling controller release and model-input lock |
-| `config.py` | release-backed robot params plus this package's ODD and disturbance bounds |
+| `config.py` | lazy adapter for the release-backed robot and central ODD contract |
 | `dynamics.py` | opt6 reduced dynamics compiled from the single kernel in `vault-controller` |
 | `f_cert.py` | the certified one-step model + ODD margins (one source for env/grid/filter) |
 | `grid.py` | 4D grid HJ reach-avoid value iteration — **regenerate the value function** |
@@ -56,6 +56,11 @@ an alternate path. On first artifact access, `model_release.py` requires
 `vault/data/MODEL_INPUTS.lock.json` to be byte-identical to
 `vault-controller/models/MODEL_INPUTS.lock.json` and verifies each consumed
 artifact hash.
+
+The ODD bounds, grid axes and resolutions, control bound, friction slices, and
+disturbance assumptions are declared once in
+`vault-controller/models/source/odd_contract.json`. This package reads them
+through `config.py`; it does not maintain a second set of literals.
 
 To run `evaluate.py`, also build the controller library:
 ```bash

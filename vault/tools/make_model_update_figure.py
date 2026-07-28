@@ -1,8 +1,10 @@
-"""Figure: what the v2.1 -> v2.2 model update did to the certified safe set.
+"""Historical figure: v2.1 -> v2.2 model update on the pre-widening ODD.
 
 Same solver, same ODD contract, same axes, same friction slices -- only the
 robot model changed. The v2.1 grid is read from git (Jaime's committed grid at
-2c4f73d); the v2.2 grid is the committed regeneration.
+2c4f73d); the v2.2 grid is pinned at fb40058, before the 2026-07-27 +/-4
+domain widening. This script intentionally does not read the active grid:
+safe-set fractions on different domains are not comparable.
 
 Run from the repo root:
     PYTHONPATH=$PWD:../vault-controller python -m vault.tools.make_model_update_figure
@@ -25,7 +27,7 @@ from matplotlib.colors import ListedColormap
 
 REPO = Path(__file__).resolve().parents[2]
 V21_REF = "2c4f73d:vault/data/grid_reachavoid_odd.npz"
-V22_PATH = REPO / "vault/data/grid_reachavoid_odd.npz"
+V22_REF = "fb40058:vault/data/grid_reachavoid_odd.npz"
 OUT = REPO / "vault/docs/model_update_safeset_v2_1_to_v2_2.pdf"
 
 SAFE, UNSAFE = "#2e9e4f", "#d1443c"
@@ -41,6 +43,20 @@ def load(path):
                   for k, _ in MUS}
 
 
+def load_git_ref(reference):
+    with tempfile.NamedTemporaryFile(suffix=".npz") as temporary:
+        temporary.write(
+            subprocess.run(
+                ["git", "show", reference],
+                cwd=REPO,
+                capture_output=True,
+                check=True,
+            ).stdout
+        )
+        temporary.flush()
+        return load(temporary.name)
+
+
 def slice_vtheta(axes, V):
     """V on the (v, theta) plane at theta_dot = psi_dot = 0."""
     return V[:, :, int(np.argmin(np.abs(axes[2]))), int(np.argmin(np.abs(axes[3])))]
@@ -53,12 +69,8 @@ def lean_at_rest(axes, V):
 
 
 def main() -> int:
-    with tempfile.NamedTemporaryFile(suffix=".npz") as tmp:
-        tmp.write(subprocess.run(["git", "show", V21_REF], cwd=REPO,
-                                 capture_output=True, check=True).stdout)
-        tmp.flush()
-        ax21, g21 = load(tmp.name)
-    ax22, g22 = load(V22_PATH)
+    ax21, g21 = load_git_ref(V21_REF)
+    ax22, g22 = load_git_ref(V22_REF)
     assert [len(a) for a in ax21] == [len(a) for a in ax22], "axes differ; not comparable"
 
     fig = plt.figure(figsize=(8.5, 6.4))
@@ -111,8 +123,9 @@ def main() -> int:
         ax.tick_params(labelsize=7)
 
     fig.text(L, 0.075,
-             "Slices at $\\dot\\theta=\\dot\\psi=0$. Grids: v2.1 read from git at 2c4f73d; v2.2 is the "
-             "committed regeneration, same contract.\nReproduce: python vault/tools/make_model_update_figure.py",
+             "Slices at $\\dot\\theta=\\dot\\psi=0$. Grids pinned at 2c4f73d and fb40058 on the "
+             "same historical contract; not the active +/-4 domain.\nReproduce: "
+             "python vault/tools/make_model_update_figure.py",
              fontsize=7.4, color="#666666", va="top", linespacing=1.5)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
