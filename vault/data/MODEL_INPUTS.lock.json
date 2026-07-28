@@ -30,8 +30,8 @@
   },
   "odd_contract": {
     "path": "models/source/odd_contract.json",
-    "sha256": "1092e1fc746b6d25815edd9daf9fae90280aa5621eddd09e8f54d6f33f2cf7b3",
-    "revision": "2026-07-28-v2.2-odd-pm4-policy-tier",
+    "sha256": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
+    "revision": "2026-07-28-v2.2-odd-pm4-policy-tiers",
     "change_class": "domain widening; no safety threshold or disturbance-bound relaxation",
     "velocity_bounds_mps": [
       -4.0,
@@ -42,7 +42,8 @@
       4.0
     ],
     "velocity_tier": "policy",
-    "velocity_tier_note": "Corrected 2026-07-28: the four-state reduced model has no speed-dependent term, so no solve can derive a velocity boundary; the bound is a declaration."
+    "velocity_tier_note": "Corrected 2026-07-28: the four-state reduced model has no speed-dependent term, so no solve can derive a velocity boundary; the bound is a declaration.",
+    "theta_failure_tier": "policy"
   },
   "hil_runtime": {
     "files": {
@@ -386,8 +387,8 @@
     "models/generated/reduced/reduced_struct_fjac_f32_opt6.c": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9",
     "models/generated/usd/visualization_v2_2/articulated_v2_2.usdc": "6227bbc1e462dc26fb4bbb97d34e9566bf6a7b379c51e95c059fd6562665c7cc",
     "models/generated/usd/visualization_v2_2/manifest.json": "111ee112905aa6d5cb5ae7f99683ed2e3565ab9e17879172a79c5cd89e3ae7c3",
-    "models/source/MODEL_SOURCE_MANIFEST.json": "e17b44336033f352dd8ba73e52c74d14efec229d81707f26d1e5c9e8c2d87305",
-    "models/source/odd_contract.json": "1092e1fc746b6d25815edd9daf9fae90280aa5621eddd09e8f54d6f33f2cf7b3",
+    "models/source/MODEL_SOURCE_MANIFEST.json": "57a6e9ee7c0b205b2bc392ab442ff9f41093fd62c36321991aa7927c1559ffc2",
+    "models/source/odd_contract.json": "6702ed8de293779a9829ca96621f62c85d03b254cf251ebd60e0478f96480a58",
     "models/source/geometry/model_geometry.json": "d808fc5fd35188ce77e115f80fae8bf1547ce2eab43a12a704d61859c6ab46f5",
     "models/source/urdf/articulated_v2_2/articulated_v2_2_manifest.json": "f01bb0748bfcb575c7aa92f68ba0e46d48c5129582d4296ee9b82b19a0526b6b",
     "models/source/urdf/articulated_v2_2/model_geometry.json": "852d38a5980a80b47708bb9e33c2ad104fb6109f0ef3135f513039b2ca2df9e9",
