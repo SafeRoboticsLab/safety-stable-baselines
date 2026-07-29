@@ -209,12 +209,36 @@ it does raise governed speed in some conditions.
 
 ## 10. Four limitations, better characterised than in §7
 
-**(a) Early stopping is anti-conservative.** Our VI starts at `V₀ = g` and is
-monotone non-increasing, so every iterate has `V_k ≥ V_∞`: stopping at `dV < 1e-3`
-ships a set *larger* than the discrete fixed point, compounding interpolation error
-rather than opposing it. Undiscounted VI admits no residual bound — the usual
-`γδ/(1−γ)` correction is infinite at `γ = 1`. Fix is to iterate to the exact
-floating-point fixed point. **Not yet applied; it changes every grid.**
+**(a) Early stopping is anti-conservative, and the residual is UNBOUNDED.** Our VI
+starts at `V₀ = g` and is monotone non-increasing, so every iterate has `V_k ≥ V_∞`:
+stopping at any positive `dV` ships a set *larger* than the discrete fixed point,
+compounding interpolation error rather than opposing it.
+
+We tried to close this by tightening and **it cannot be closed that way.** We measured
+the convergence rate on the full laden μ=0.3 grid:
+
+    iterations per decade of dV
+       0 ->  200        63
+     200 ->  600       759
+     600 -> 1000     2,164
+    1000 -> 1400     2,854
+    1400 -> 1700     3,153      still climbing at iteration 1,900
+
+The rate is not constant — it degrades monotonically. So there is no geometric tail to
+sum, and **`dV` bounds nothing.** This is your own non-contraction result showing up
+empirically: ICRA 2019 states the undiscounted safety operator "does not induce a
+contraction mapping on V", and a non-contraction has no uniform rate to bound with.
+
+We briefly set the tolerance to 1e-9 on the argument that the tail was bounded by
+`dV·r/(1−r) ≈ 154·dV`. **That argument was wrong** and we are recording it because the
+error is instructive: it used an early-window rate as if it were global. Reaching 1e-9
+would have needed >17,000 iterations and still bounded nothing. The tolerance is back
+at 1e-3.
+
+Consequence for the certificate: the shipped safe sets are supersets of the discrete
+fixed point by an amount we cannot quantify. Closing this needs a different
+construction — verifying the shipped `V̂` directly as a candidate invariant, cell by
+cell, which does not depend on VI having converged at all.
 
 **(b) `min_d` is taken over the CORNERS of the disturbance box.** Restricting the
 adversary is the optimistic direction. Measured against a denser sampling, 3 states
