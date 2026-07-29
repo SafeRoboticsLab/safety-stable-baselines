@@ -370,3 +370,38 @@ be accepted by the contract and quietly discarded by the consumer.
 We have not fixed it: promoting these to intervals changes every downstream consumer,
 and the right shape depends on whether the filter is ever intended to carry
 direction-dependent bounds — which is your call, not ours.
+
+## 13. The MuJoCo validation plant drops the lateral CoM offset
+
+`vault-controller/models/generated/mujoco/balance/balance_plant.xml` places the sprung
+body's centre of mass at `pos="0 0 0.0697058"` — **y = 0**. The generated mass
+properties put the whole-robot CoM at `[0.000322, 0.007276, 0.061509]`, and since the
+wheels are symmetric that lateral offset comes entirely from the sprung body, so the
+plant should carry `y ≈ 0.00825`.
+
+Why it matters here specifically: `y_cm ≠ 0` is the asymmetry that forces `A_TIP` to
+carry a symmetric worst case, that made the governor's `|ψ̇|` fold unsound (§9), and
+that produces the upright yaw→pitch coupling the reduced model exhibits. **A validation
+plant with `y_cm = 0` cannot reproduce any of it** — it is a symmetric robot validating
+an asymmetric model, and it will agree most convincingly exactly where the asymmetry
+matters least.
+
+Not fixed. It is a generated artifact, so the correction belongs in its generator, and
+changing it invalidates existing validation runs.
+
+**A related claim we could NOT confirm.** An earlier internal note recorded the plant's
+roll inertia as "25.9% understated". The plant's `diaginertia` is `[0.538619, 0.252561,
+0.538619]` against a generated whole-robot `inertia_at_com` of `[0.787347, 0.277148,
+0.590612]`, which looks like a 31.6% shortfall — but the plant body is the **sprung**
+body (17.411307 kg) and the artifact tensor is the **whole robot** (19.731467 kg).
+Comparing them is the same frame error this document opens with, so we are not
+asserting a percentage. Confirming it needs a sprung-body inertia tensor, which the
+generated artifact does not separate out.
+
+Note also that the plant uses the same value for `Ixx` and `Izz`, and that
+`firmware/validation/plants/build_mujoco_model.py` picks roll inertia as
+`max(chassis_yaw, |chassis_yaw − I_pitch| + 1e-3)` — a value chosen to satisfy the
+principal-inertia triangle inequality, with a comment noting roll does not enter the
+planar dynamics. That is correct for balance and tracking, and **exactly wrong for roll
+certification**: roll excursion scales as `1/I_φ`, so every roll-margin figure rests on
+an unidentified inertia. `I_φ` has never been measured.

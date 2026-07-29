@@ -275,3 +275,33 @@ def test_known_stale_checkpoint_is_quarantined(tmp_path: Path) -> None:
         match="quarantined.*replacement RL training requires explicit operator authorization",
     ):
         get_model_release().verify_checkpoint(stale)
+
+
+def test_yaw_sign_convention() -> None:
+    """Pin the torque->yaw sign, in BOTH the reduced model and the MuJoCo plant.
+
+    mujoco_plant.py's docstring claimed `tau_L>tau_R drives +psi_dot`. It does not:
+    a left-torque surplus yaws NEGATIVE. The model and the plant agreed all along --
+    only the comment was inverted, and nothing tested it.
+
+    Asserted as a SIGN and a cross-check, not a magnitude, so it survives regeneration.
+    A sign convention is exactly the kind of fact that is cheap to state wrongly and
+    expensive to discover wrongly.
+    """
+    import numpy as np
+    from vault.dynamics import CoupledOpt6
+
+    model = CoupledOpt6()
+    forward = np.asarray(model.f(np.zeros(4), np.array([1.0, 1.0])), float)
+    differential = np.asarray(model.f(np.zeros(4), np.array([1.0, -1.0])), float)
+
+    assert forward[0] > 0.0, (
+        f"+tau_sum must drive +v; got vdot={forward[0]}")
+    assert differential[3] < 0.0, (
+        f"tau_L > tau_R must drive NEGATIVE psi_dot; got psi_ddot={differential[3]}. "
+        f"If this now reads positive the convention has flipped, and every consumer "
+        f"of the yaw sign -- including the roll constraint's signed form -- needs "
+        f"rechecking.")
+    mirrored = np.asarray(model.f(np.zeros(4), np.array([-1.0, 1.0])), float)
+    assert mirrored[3] > 0.0 and abs(mirrored[3] + differential[3]) < 1e-9, (
+        "swapping the torque pair must mirror psi_ddot exactly")

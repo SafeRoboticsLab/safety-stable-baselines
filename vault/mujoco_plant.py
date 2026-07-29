@@ -13,8 +13,11 @@ full 3D state (freejoint chassis + 2 wheel hinges). This plant maps between them
                  the chassis forward linear velocity projected on the heading.
 
   CONTROL (4-state -> MuJoCo), u = [tau_L, tau_R] per wheel (N·m):
-    applied to the lwheel/rwheel motors. Sign verified so +tau_sum drives +v and
-    tau_L>tau_R drives +psi_dot (matches reduced_model's b_yaw_diff sign).
+    applied to the lwheel/rwheel motors. +tau_sum drives +v (measured +1.413 at
+    u=[1,1]). CORRECTED 2026-07-29: this previously claimed tau_L>tau_R drives
+    +psi_dot. It does not -- measured psi_ddot = -3.633 at u=[1,-1], i.e. a LEFT
+    torque surplus yaws NEGATIVE. The reduced model and the plant agree; only the
+    comment was inverted. test_yaw_sign_convention pins it.
 
 Reset accepts a 4-state x0 and places the robot at that pitch/velocity (upright-ish);
 get_state returns the 4-state. The 3D residual DOFs (roll, lateral) evolve freely —

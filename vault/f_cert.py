@@ -57,6 +57,11 @@ def f_cert_step(x, u, mu):
     xd[2] += -C.C_THETA * thd                                            # measured pitch damping
     xd[3] += -((C.YAW_K0 + C.YAW_KC * mu) * np.tanh(psid / C.YAW_EPS)
                + C.YAW_KV * psid) * (n_tot / (C.MASS * C.GRAV))          # measured yaw scrub
+    # NOTE: n_tot = C.MASS * C.GRAV exactly (wheel_loads), so the ratio above is
+    # identically 1.0. It is a no-op that LOOKS load-dependent. Retained rather than
+    # deleted because a genuine normal-load dependence belongs here if the total ever
+    # stops being static -- but today it scales nothing, and reading it as a load term
+    # is a misreading.
     v2 = v + xd[0] * C.DT
     thd2 = thd + xd[2] * C.DT
     psid2 = psid + xd[3] * C.DT

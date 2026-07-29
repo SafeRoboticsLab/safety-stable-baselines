@@ -1,4 +1,12 @@
-"""4D grid Hamilton-Jacobi reach-avoid value iteration — the certifiable oracle.
+"""4D grid Hamilton-Jacobi AVOID-ONLY safety value iteration — the certifiable oracle.
+
+NAMING (corrected 2026-07-29): this module, its output `grid_reachavoid_odd.npz`, and
+the `robust_odd_*` grids are all called "reach-avoid" for historical reasons. They are
+NOT. The operator below is min(g, max_u min_d V) with NO target margin l(x): it
+certifies "never fails", not "reaches a stop". The distinction is not cosmetic -- on the
+same plant an avoid-only fallback leaves ~42% of the (v, theta) plane safe-but-never-
+arriving, which a true reach-avoid objective collapses to zero. The reach-avoid work
+lives in reach_avoid_sac.py and is a separate, learned object.
 
 Computes the reach-avoid value V(x; mu) over x = [v, theta, theta_dot, psi_dot] by robust
 value iteration on f_cert:
