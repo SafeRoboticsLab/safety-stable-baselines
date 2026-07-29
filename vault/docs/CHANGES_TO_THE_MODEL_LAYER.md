@@ -172,3 +172,108 @@ In vault-controller:
   both the float and int8 networks.
 - **The robot does not run this.** The flashed firmware carries a v2.1 lineage whose
   dynamics kernel is reconstructible from no source we have.
+
+---
+
+# Addendum, 2026-07-29
+
+Everything above still stands. This records what changed since, and four findings
+from a literature review aimed at the limitations in §7. Nothing here touches your
+files — `reach_avoid_sac.py`, `reach_avoid_value.py`, `reach_avoid_eval.py`,
+`reach_avoid_slice.py`, `train_reach_avoid.py`, `safety_filter.py` and
+`tests/test_drabe_operator.py` are unmodified.
+
+## 8. Your code runs on v2.2 unchanged
+
+`train_reach_avoid.py` trained 300k steps on the corrected release with no edits;
+`test_drabe_operator.py` passes 7/7. `config.py` reads `THETA_MAX`, `V_ODD`,
+`PSI_ODD` and the domains straight out of `odd_contract.json`, so the corrected
+`a_tip` and the ±6 ruling reached your trainer by construction.
+
+The checkpoint is authorized in `checkpoints_manifest.json` as **evaluation only** —
+see §11.
+
+## 9. The speed governor no longer folds its inputs
+
+`bc_safety_v_governor` (and its Python mirror in `joystick_demo.v_governor`)
+evaluated the value function at `(|v|, 0, 0, |ψ̇|)`. That asserts a symmetry the
+v2.2 plant does not have: `y_cm = 7.2764 mm ≠ 0` makes turn direction asymmetric,
+and even a joint state reversal fails because the shifted roll condition
+`|H·a_y − g·y_cm|` carries a term that does not flip sign.
+
+Measured over 40,000 states per µ at reserve 0.35, it erred in **both** directions:
+316 states admitted below the required reserve, 510 needlessly throttled despite
+genuine margin. Now evaluated at the signed state, with only the speed magnitude
+bisected. This is a correction toward the certificate, not a relaxation of it — but
+it does raise governed speed in some conditions.
+
+## 10. Four limitations, better characterised than in §7
+
+**(a) Early stopping is anti-conservative.** Our VI starts at `V₀ = g` and is
+monotone non-increasing, so every iterate has `V_k ≥ V_∞`: stopping at `dV < 1e-3`
+ships a set *larger* than the discrete fixed point, compounding interpolation error
+rather than opposing it. Undiscounted VI admits no residual bound — the usual
+`γδ/(1−γ)` correction is infinite at `γ = 1`. Fix is to iterate to the exact
+floating-point fixed point. **Not yet applied; it changes every grid.**
+
+**(b) `min_d` is taken over the CORNERS of the disturbance box.** Restricting the
+adversary is the optimistic direction. Measured against a denser sampling, 3 states
+of 1,161,508 left the safe set — a lower bound twice over, since that was one
+operator application and the denser sampler was itself approximate. The error is
+second-order (`V(f+d) ≈ V(f) + ∇V·d` is exact to first order in `d`), which is why
+it is small. Note this also breaks an assumption of the level-set theorems: Hirsch
+et al. (arXiv:2607.17435, 2026) require `f(x,a,𝓑)` convex, which a finite vertex set
+is not. **Not yet applied.**
+
+**(c) The roll constraint's real exposure is cross-slope, not transients.** Our
+`|v·ψ̇| ≤ a_tip` is literally the NHTSA Static Stability Factor. The automotive
+"quasi-static is ~15% optimistic" literature concerns suspension compliance, which
+we do not have. What the criterion is *silent* about is terrain-injected roll
+energy — the mechanism behind ~95% of real rollovers. At a 2.9° cross slope (5%,
+routine on driveway aprons and ADA curb-ramp flares) plus the CoM offset, effective
+`a_tip` drops **11.3%** — more than our entire measured transient overshoot, and
+*sustained*, which is the regime that actually topples.
+
+Also: `I_roll` in the validation plant is a placeholder chosen to satisfy the
+principal-inertia triangle inequality. Correct for balance dynamics, and exactly
+wrong for roll certification — roll excursion scales as `1/I_φ`, so every
+roll-margin number rests on an unidentified inertia. `I_φ` has never been measured.
+
+**(d) A second unbounded gap we had not named: the inter-sample gap.** Our Bellman
+equation is discrete-time, but safety must hold *between* ticks; the state moves up
+to `M·Δt`. This is orthogonal to grid resolution and not covered by "exhaustive at
+grid nodes."
+
+One point in our favour, worth stating because reviewers conflate it: multilinear
+interpolation is an *averager* (Gordon, ICML 1995) — non-negative weights summing to
+one, hence non-expansive. Our scheme **is** monotone in the Barles–Souganidis sense
+and converges to the viscosity solution. Monotone ≠ conservative; both are true and
+they are different claims.
+
+## 11. On the entropy term — measured, not just argued
+
+§5 recorded that the max-entropy bonus sits inside the discounted reach-avoid
+backup. Two things to add.
+
+**Your lab's own SAC reach-avoid code already excludes it.**
+`SafeRoboticsLab/ISAACS`, `agent/base_block.py:406`, applies `entropy_motives` only
+`if self.mode == 'performance'` — the safety, risk and reach-avoid critics are
+entropy-free. So removing it aligns with your reference implementation rather than
+diverging from it. Relatedly, the RSS 2021 published code is tabular Q-learning and
+DDQN; there is no SAC, so Theorem 1 was never proven for a soft backup.
+
+**Measured on our v2.2 checkpoint.** `α` auto-tuned to 1.4e-4, and
+`β = α·(−log π)` came out **negative in 99.3%** of sampled states — for
+tanh-squashed Gaussians the density exceeds 1 near action saturation, so `log π > 0`.
+The contamination therefore ran *conservative* here, and the critic shows no
+saturation: V spans −2.52 to +0.12 with IQR 0.85. `|β|` still exceeds
+`β* = |L|(1−γ)/γ = 5.005e-4` across 83% of the domain.
+
+So the defect is real and its magnitude is above threshold; what saved this run is
+the *sign*, which is an emergent property of where the policy converged rather than
+a guarantee. It remains yours to fix or leave; we have not touched it.
+
+**If the deployed monitor becomes rollout-based**, one caution: the terminal set Ω
+must come from the grid oracle or a hand-certified at-rest set. If Ω is the learned
+critic's zero level set, the contamination is relocated behind H steps of simulation
+and made harder to see, not smaller.
