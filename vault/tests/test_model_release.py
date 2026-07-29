@@ -15,7 +15,7 @@ import pytest
 from vault.model_release import ModelRelease, ModelReleaseError, get_model_release
 
 
-LOCK_SHA256 = "8c69b5ec4647b518fd93591776a01f47f2b7e3ec7c197b6b86beb9b9745c4ef5"
+LOCK_SHA256 = "f56030685ad79b16261abc7329448a78019b7f4748490f810699be5b03ca220a"
 COMPOSITE_SHA256 = "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9"
 KERNEL_SHA256 = "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
 
@@ -136,10 +136,11 @@ def test_config_kernel_and_mujoco_use_v22_release() -> None:
     release = get_model_release()
     assert C.MASS == pytest.approx(19.731467, abs=1e-12)
     assert C.C_THETA == pytest.approx(1.3960776897331257, abs=1e-14)
-    assert C.V_ODD == (-4.0, 4.0)
+    # Velocity widened to +-6 by operator ruling 2026-07-28; yaw unchanged at +-4.
+    assert C.V_ODD == (-6.0, 6.0)
     assert C.PSI_ODD == 4.0
     assert C.MU_SLICES == (0.3, 0.6, 1.0)
-    assert C.DOMAIN_V == (-4.0, 4.0)
+    assert C.DOMAIN_V == (-6.0, 6.0)
     assert C.DOMAIN_PSI_DOT == (-4.0, 4.0)
     assert OPT6_R == pytest.approx(0.12705)
     assert OPT6_DH == pytest.approx(0.140375)
@@ -168,17 +169,17 @@ def test_grid_axes_come_from_the_release_contract() -> None:
     from vault import config as C
     from vault import grid
 
-    assert [len(axis) for axis in grid.AXES_FULL] == [44, 29, 17, 25]
+    assert [len(axis) for axis in grid.AXES_FULL] == [65, 29, 17, 25]
     assert [len(axis) for axis in grid.AXES_SMOKE] == [9, 15, 11, 11]
     np.testing.assert_allclose(
         [axis[0] for axis in grid.AXES_FULL],
-        [-4.0, -1.35, -6.0, -4.0],
+        [-6.0, -1.35, -6.0, -4.0],
         rtol=0.0,
         atol=1e-12,
     )
     np.testing.assert_allclose(
         [axis[-1] for axis in grid.AXES_FULL],
-        [4.0, 1.35, 6.0, 4.0],
+        [6.0, 1.35, 6.0, 4.0],
         rtol=0.0,
         atol=1e-12,
     )
@@ -191,7 +192,8 @@ def test_environment_spaces_cover_the_contract_reset_domain() -> None:
     from vault.env import BalanceSafetyEnv
     from vault.mujoco_env import ContactSafetyEnv
 
-    expected_high = np.array([4.0, 1.35, 6.0, 4.0, 1.0], np.float32)
+    # Velocity component follows C.DOMAIN_V, widened to +-6 by the 2026-07-28 ruling.
+    expected_high = np.array([6.0, 1.35, 6.0, 4.0, 1.0], np.float32)
     for environment_type in (BalanceSafetyEnv, ContactSafetyEnv):
         environment = environment_type()
         np.testing.assert_allclose(
@@ -242,18 +244,26 @@ def test_default_and_capability_grids_have_distinct_contracts() -> None:
     capability_filter = ValueFilter.from_capability_grid(mode="unladen")
     np.testing.assert_allclose(
         odd_filter.lo,
-        [-4.0, -1.35, -6.0, -4.0],
+        [-6.0, -1.35, -6.0, -4.0],
         rtol=0.0,
         atol=1e-12,
     )
     np.testing.assert_allclose(
         odd_filter.hi,
-        [4.0, 1.35, 6.0, 4.0],
+        [6.0, 1.35, 6.0, 4.0],
         rtol=0.0,
         atol=1e-12,
     )
-    assert capability_filter.lo[0] == pytest.approx(-6.0)
-    assert capability_filter.hi[0] == pytest.approx(6.0)
+    # The point of this test is that the two contracts stay DISTINCT: the ODD grid
+    # spans the declared envelope (+-6 after the 2026-07-28 ruling) while the
+    # capability grid is a deliberately wider computational WINDOW (+-7), so the
+    # filter has values everywhere a command can reach.  Both moved with the ruling;
+    # if these two ever coincide, the capability window has collapsed into the ODD
+    # contract -- the regression this test exists to catch.
+    assert capability_filter.lo[0] == pytest.approx(-7.0)
+    assert capability_filter.hi[0] == pytest.approx(7.0)
+    assert capability_filter.lo[0] < odd_filter.lo[0]
+    assert capability_filter.hi[0] > odd_filter.hi[0]
 
 
 def test_known_stale_checkpoint_is_quarantined(tmp_path: Path) -> None:
