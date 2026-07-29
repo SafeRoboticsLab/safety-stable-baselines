@@ -13,6 +13,19 @@
       "status": "incompatible"
     },
     {
+      "artifact_sha256": "ba482bc2bf7161bdd4fa065e5ce2c232d9f084ce9c7b9c836437892c6e09fc7a",
+      "lock_sha256": "f56030685ad79b16261abc7329448a78019b7f4748490f810699be5b03ca220a",
+      "model_hashes": {
+        "composite_params_sha256": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
+        "opt6_kernel_sha256": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
+      },
+      "pattern": "reach_avoid_safety_sac_v22*",
+      "reason": "trained 2026-07-29 on the v2.2 release under this lock, 300k steps, --saturate-target. AUTHORIZED FOR EVALUATION ONLY: its critic carries the inherited max-entropy term inside the DRABE backup (see docs/CHANGES_TO_THE_MODEL_LAYER.md), so it is not a certified safety value.",
+      "status": "compatible",
+      "training_stage": "reach_avoid",
+      "training_steps": 300000
+    },
+    {
       "incompatible_with": "b6fefc97e833a439826645b209ab925ca2dfd7dac21f1f3a8ee0f77f095d4f9f",
       "pattern": "reach_avoid_safety_sac*",
       "reason": "trained before the v2.2 camera-inclusive reduced-model release",
