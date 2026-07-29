@@ -277,3 +277,72 @@ a guarantee. It remains yours to fix or leave; we have not touched it.
 must come from the grid oracle or a hand-certified at-rest set. If Ω is the learned
 critic's zero level set, the contamination is relocated behind H steps of simulation
 and made harder to see, not smaller.
+
+## 12. Three things you need from us before you can rule on any of it
+
+### 12.1 Two certificate preconditions we satisfy by accident, not by argument
+
+Our robust safety operator is **not a contraction** — your own ICRA 2019 paper says so
+in as many words, and Akametalu et al. (arXiv:1809.00706) exhibit the failure for an
+operator structurally identical to ours: any constant vector `α·1` is a fixed point
+for `α < −L`. So there is a continuum of spurious fixed points, and value iteration
+is not guaranteed to find the one we want.
+
+Two conditions close that gap (Bertsekas, *Abstract Dynamic Programming* 3rd ed.,
+Prop. 4.3.13–14 and §4.3.2), and our solvers satisfy **both** — but by construction
+rather than by any stated intent:
+
+1. **The control set is finite.** `UGRID` is 9 discrete torque pairs. Note the
+   asymmetry with the disturbance: discretizing the *control* is what earns this
+   guarantee, while discretizing the *disturbance* is what cost us §10(b).
+2. **Value iteration is initialised at `V₀ = g`.** Every solver does `V = g.copy()`,
+   which yields convergence to the *greatest* fixed point below `g`.
+
+**We are recording these as preconditions because either would be silently destroyed
+by an obvious optimisation.** A continuous or optimizer-based control search breaks
+the first. Warm-starting VI from a previously-converged or learned `V` breaks the
+second — and that is precisely the kind of speedup someone proposes to make a 25-hour
+re-solve cheaper. If either changes, the fixed-point argument has to be redone.
+
+### 12.2 A candidate terminal set Ω, with its provenance and its limits
+
+If the deployed monitor becomes rollout-based, it needs a terminal safe set Ω that is
+invariant under the fallback. We can supply one; we cannot rule on whether it
+qualifies.
+
+What we have: the avoid-only capability grid's safe set `{V ≥ 0}`, solved on the
+±7 v / ±5 ψ̇ window under the corrected `a_tip`, exhaustively conservative at grid
+nodes with zero false-safe nodes in the int8 gate.
+
+What it is **not**: it is an **avoid-only** set. It certifies "never fails", not
+"reaches a stop". It is therefore not a target set in the reach-avoid sense, and
+using it as Ω asserts something we have not shown — that the fallback actually drives
+the state into it and stays. It also carries every limitation in §10, including that
+its own `min_d` was corrected only on 2026-07-29.
+
+The reason we raise it at all: **if Ω is taken from the learned critic's zero level
+set instead, the entropy contamination in §11 is relocated behind H steps of
+simulation and made harder to detect, not smaller.** A grid-oracle Ω avoids that. The
+choice is yours; we are flagging the trap, not making the call.
+
+### 12.3 An asymmetry the contract can express and the consumer cannot
+
+`config.py` reduces two of three ODD intervals to a single endpoint:
+
+    THETA_MAX = odd_contract["odd"]["theta_failure"]["bounds"][1]   # drops bounds[0]
+    PSI_ODD   = odd_contract["odd"]["yaw_rate"]["bounds"][1]        # drops bounds[0]
+    V_ODD     = tuple(odd_contract["odd"]["velocity"]["bounds"])    # keeps both
+
+All three are symmetric today, so there is no numerical error right now. The defect is
+representational: **the contract can express an asymmetric bound that the consumer
+structurally cannot carry**, and it would be silently half-applied.
+
+This is not hypothetical for v2.2. The plant is genuinely asymmetric — `y_cm =
+7.2764 mm` is what makes turn direction differ, what forced `A_TIP` to carry a
+symmetric worst case, and what made the governor's `|ψ̇|` fold unsound (§9). An
+asymmetric yaw bound is a plausible consequence of that asymmetry, and today it would
+be accepted by the contract and quietly discarded by the consumer.
+
+We have not fixed it: promoting these to intervals changes every downstream consumer,
+and the right shape depends on whether the filter is ever intended to carry
+direction-dependent bounds — which is your call, not ours.
