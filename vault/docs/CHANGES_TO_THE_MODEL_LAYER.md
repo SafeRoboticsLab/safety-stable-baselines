@@ -405,3 +405,109 @@ principal-inertia triangle inequality, with a comment noting roll does not enter
 planar dynamics. That is correct for balance and tracking, and **exactly wrong for roll
 certification**: roll excursion scales as `1/I_φ`, so every roll-margin figure rests on
 an unidentified inertia. `I_φ` has never been measured.
+
+---
+
+# §14. Ownership, open items, and how to pick this up
+
+This section is the handoff proper: who owns what, every open item with its evidence
+pointer, and the mechanics your coding agent needs on day one.
+
+## 14.1 The ownership rule (restating CODEOWNERS, with the boundary cases)
+
+**Safety-filter mathematics is yours. The four-state model and its contracts are ours.**
+Model/contract changes are announced to you before landing (this document is that
+announcement); math-layer defects found by us are reported with analysis, never fixed.
+We held that line: none of your seven files has been modified across any commit in
+this release — verifiable with
+`git diff <base>..HEAD -- $(grep @jfisac CODEOWNERS | awk '{print $1}')` → empty.
+
+Two boundary cases resolved this week, recorded so the precedent is visible:
+- The speed governor's `|v|,|ψ̇|` fold (§9): an *architecture component* failing for a
+  *plant-assumption* reason. We fixed it, because the wrong assumption was about OUR
+  plant (`y_cm ≠ 0`). Whether command-space governing is a sound intervention scheme
+  at all remains YOUR question.
+- The exact-`min_d` attempt (§10b): solver mathematics. We tried it, found the gap
+  ourselves, and REVERTED rather than ship an operator asserted exact on an argument
+  that does not close. The finding is yours to resolve.
+
+## 14.2 Safety theory — all yours. Status of every row
+
+| # | item | status | evidence |
+|---|------|--------|----------|
+| T1 | `min_d` over disturbance-box corners is optimistic | OPEN. Exact fix attempted, REVERTED — the `bad`-mask (−1.0 override on out-of-box / wheel-overspeed successors) is a jump discontinuity inside the disturbance interval that the affine-per-cell argument does not cover. 3/1,161,508 states left the set under denser sampling (lower bound). Also breaks Hirsch et al. 2026 convexity assumption on f(x,a,D). | §10(b); solver comment at the corner loop in `robust_capability_odd_solve.py`; revert commit explains the gap |
+| T2 | Early-stopping residual is UNBOUNDED | OPEN, proven unclosable by iteration: iters/decade degrade 63→759→2,164→2,854→3,153 (laden μ=0.3, full grid). No geometric tail exists — your ICRA 2019 non-contraction, measured. A 154·dV bound was briefly believed and is retracted; the failed reasoning is preserved deliberately. | §10(a); solver comment above `CONVERGENCE_TOL` |
+| T3 | Operator admits spurious constant fixed points | OPEN as a stated precondition: finite control set (9 torque pairs) + `V₀ = g` close it (Bertsekas AbstractDP Prop 4.3.13–14) and we satisfy both BY CONSTRUCTION. Warm-starting VI or a continuous control search silently forfeits it. | §12.1 |
+| T4 | Inter-sample gap (`M·Δt` between ticks) | OPEN, unbounded, orthogonal to grid resolution | §10(d) |
+| T5 | `{V ≥ 0}` vs `{V ≥ ε}` — boundary belongs to the losing side | OPEN, cheap | §10; Hirsch et al. 2026 Thm 1 |
+| T6 | Node-exhaustive ≠ continuum proof | structural; the literature path is an interval cell-wise invariance certificate on the shipped V̂, which does not require VI to have converged | §10 |
+| T7 | No finite-grid two-sided error bound exists for undiscounted Isaacs + multilinear interpolation | known limit of the field, cited, not a defect | §10 |
+| T8 | Multilinear interpolation is an averager ⟹ monotone ⟹ converges to viscosity solution | IN OUR FAVOUR — but monotone ≠ conservative; both statements are true and different | §10 |
+| T9 | Roll constraint quasi-static on a roll-free model | OPEN. Closed-form roll-energy allowance derived (ε·τ ≤ √(2·I_φ·U)/(m·H·a_tip)); blocked on measuring I_φ, which has never been measured — the validation plant's I_roll is a placeholder | §13 |
+| T10 | Max-entropy term inside the DRABE backup | OPEN, yours (inherited from safety_sb3). β* = \|L\|(1−γ)/γ = 5.005e-4 at γ=0.999, saturation at 2β*. Your ISAACS code already excludes it (`base_block.py:406`). Measured on our checkpoint: α→1.4e-4, β<0 in 99.3% of states — conservative by SIGN LUCK, not guarantee | §11; `tests/test_drabe_operator.py` has the contraction/nesting tests; the §2 trap makes a good regression test |
+| T11 | D-hat margin statistics (1.25× fails resampling at n=50) | OPEN, untouched | internal task record |
+
+## 14.3 Filter architecture — split ownership
+
+| # | item | owner | status |
+|---|------|-------|--------|
+| A1 | avoid-only vs reach-avoid objective | operator | DECIDED: reach-avoid deploys; avoid-only grid parked as baseline (`AVOID_ONLY_GRID_BASELINE.md` in vault-controller) |
+| A2 | value-based vs rollout monitor | **you — highest leverage** | OPEN. Decides whether T10 is in the deployed path at all: rollout monitor with a certified Ω escapes it by construction (RSS 2021: FSR "exactly 0"); value monitor inherits it |
+| A3 | where Ω comes from | **you** | OPEN. Candidate supplied with disqualifiers stated (§12.2): our grid is avoid-only, so it certifies "never fails", not "reaches". Ω from the learned critic RELOCATES the contamination behind H steps of simulation |
+| A4 | deployed representation | operator | DECIDED: float64 grid-direct on Orin. No grid-direct evaluator exists yet — the C path consumes MLP weights; the lossless path exists only in Python `ValueFilter` |
+| A5 | locked release artifact | ours | DECIDED: the capability grid (±7/±5 window) |
+| A6 | governor plant assumption | ours | FIXED: signed-state evaluation; property tests replace the pinned witness |
+| A7 | is command-space governing a sound intervention scheme | **you** | OPEN |
+| A8 | `bounds[0]` discard — contract can express asymmetry the consumer cannot carry | **you** (shape) | OPEN, documented §12.3. Not hypothetical: the plant is asymmetric (`y_cm ≠ 0`) |
+| A9 | is any value-function approximation certifiable (δ-shift, coverage/retention) | **you** | OPEN — applies to the distilled net AND to grid interpolation; Lin & Bansal L4DC 2024 is the closest machinery, and it calibrates against the critic's own policy, so T10 must be fixed first |
+
+## 14.4 Mechanics for your coding agent
+
+Environment:
+
+    conda env: safe-sb3   (SB3 2.8.0, torch 2.12.0 CPU, mujoco 3.9.0; NOT isaacs)
+    export VAULT_CONTROLLER_ROOT=~/Documents/vault-controller
+    # the model-release gate refuses to load anything if the lock is not byte-identical
+
+Verification battery (all green as of this handoff):
+
+    (SSB)        python -m pytest vault/tests -q                          # 18
+    (controller) python models/tools/verify_model_release.py             # 28 gates, exit 0
+                 python models/tools/check_bound_consistency.py          # 9/9
+                 python models/tools/check_frame_hygiene.py [extra-root] # both trees
+                 balance_controller/c/test/*.py are STANDALONE scripts — pytest
+                 collects 1 of 15 and prints a false green; run them individually
+    (toolchain)  cd firmware && python -m pytest -q                      # 152 + 6 xfail
+                 # safety_cert/ is in testpaths NOW; archive/ is excluded — a file
+                 # there poisoned sys.path at import time and 16/18 tests silently
+                 # validated v2.0 parameters. Do not re-add archive to collection.
+
+Checkpoints: `reach_avoid_safety_sac_v22` is authorized EVALUATION-ONLY via an
+explicit pinned manifest entry (lock + sha256). Everything else matching
+`reach_avoid_safety_sac*` is quarantined. Retraining after you fix T10: the trainer
+is `python -m vault.train_reach_avoid --steps 300000 --saturate-target` (~55 min at
+~100 fps CPU); slices via `python -m vault.reach_avoid_slice --n 41 --horizon 300
+--model reach_avoid=<ckpt>`. The 8 remaining corrected-solver grid re-solves were
+deferred to your hardware (~3 h/slice at the current tolerance).
+
+Figures: `vault/tools/make_v22_results_figure.py` regenerates the results PDF from
+the committed slice JSON + pinned grids. `make_odd_safeset_figure.py` is pinned to
+the older contract; do not reuse it for this domain.
+
+Traps we hit so you do not: pytest's 1-of-15 false green (above); `pgrep | tail -1`
+returning a wrapper shell instead of the python process; generated headers going
+stale against the built `.so` (`export_v_mlp_c.py` does NOT rebuild — always
+`make -C balance_controller/c` after any header export); relock does not touch
+`int8_deployment.gates` (hand-maintained); a smoke solve used to overwrite release
+grids (now suffixed `_SMOKE`).
+
+## 14.5 What "satisfactory" means here, stated plainly
+
+The model layer is corrected, locked, gated, and green. The reach-avoid result is a
+PIPELINE validation (your code runs unmodified on the corrected model and produces a
+sane outcome map), NOT a converged benchmark — 17.3% limbo says undertrained, and
+the checkpoint carries T10. The avoid-only certificate is internally consistent and
+its eight limits are stated with measurements. Nothing in this release claims a
+continuum guarantee, a hardware witness beyond total mass, or a certified learned
+policy. Where we tried to close a theory gap and failed, the failed reasoning is in
+the record (T1, T2) because the failure modes are instructive.
