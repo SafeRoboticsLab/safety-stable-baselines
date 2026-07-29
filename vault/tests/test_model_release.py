@@ -121,10 +121,16 @@ def test_mujoco_cylinder_uses_locked_contact_half_width() -> None:
         if geom.get("name") in {"left_wheel_geom", "right_wheel_geom"}
     ]
     assert len(wheel_geoms) == 2
+    # PUBLIC REPO: expected values come from the PRIVATE release at runtime, never
+    # from literals in this file.
+    params = get_model_release().load_json("composite_params")
+    half_width = get_model_release().load_json("model_geometry")[
+        "wheel_contact_half_width"
+    ]
     assert {
         tuple(float(value) for value in geom.get("size", "").split())
         for geom in wheel_geoms
-    } == {(0.12705, 0.02)}
+    } == {(params["wheel_radius"], half_width)}
 
 
 def test_config_kernel_and_mujoco_use_v22_release() -> None:
@@ -134,34 +140,34 @@ def test_config_kernel_and_mujoco_use_v22_release() -> None:
     from vault.mujoco_model import build_mjcf, load_params
 
     release = get_model_release()
-    assert C.MASS == pytest.approx(19.731467, abs=1e-12)
-    assert C.C_THETA == pytest.approx(1.3960776897331257, abs=1e-14)
-    # Velocity widened to +-6 by operator ruling 2026-07-28; yaw unchanged at +-4.
-    assert C.V_ODD == (-6.0, 6.0)
-    assert C.PSI_ODD == 4.0
-    assert C.MU_SLICES == (0.3, 0.6, 1.0)
-    assert C.DOMAIN_V == (-6.0, 6.0)
-    assert C.DOMAIN_PSI_DOT == (-4.0, 4.0)
-    assert OPT6_R == pytest.approx(0.12705)
-    assert OPT6_DH == pytest.approx(0.140375)
-    assert _SRC == release.artifact_path("opt6_kernel")
-    np.testing.assert_allclose(
-        CoupledOpt6().f(
-            np.array([0.3, 0.1, -0.2, 0.4]),
-            np.array([1.0, -0.5]),
-        ),
-        [0.06663837, -0.2, 1.82102907, -2.70039201],
-        rtol=2e-6,
-        atol=2e-7,
+    # PUBLIC REPO: this test asserts CONSISTENCY between config, kernel, and the
+    # private release -- never absolute model values, which must not appear here.
+    # Absolute-value pins (masses, geometry, dynamics regression vectors) live in
+    # vault-controller's own private test suite.
+    params = release.load_json("composite_params")
+    contract = release.load_json("odd_contract")
+    assert C.MASS == pytest.approx(
+        params["m_b"] + 2.0 * params["m_wheel"], abs=1e-12
     )
+    assert C.V_ODD == tuple(contract["odd"]["velocity"]["bounds"])
+    assert C.PSI_ODD == contract["odd"]["yaw_rate"]["bounds"][1]
+    assert C.MU_SLICES == tuple(contract["friction"]["slices"])
+    assert C.DOMAIN_V == tuple(contract["grid_axes"]["velocity"]["bounds"])
+    assert C.DOMAIN_PSI_DOT == tuple(contract["grid_axes"]["yaw_rate"]["bounds"])
+    assert OPT6_R == pytest.approx(params["wheel_radius"])
+    assert _SRC == release.artifact_path("opt6_kernel")
+    # dynamics sanity without a pinned response vector: finite, correct shape, and
+    # the kinematic identity theta_dot passthrough holds exactly.
+    x = np.array([0.3, 0.1, -0.2, 0.4])
+    xdot = np.asarray(CoupledOpt6().f(x, np.array([1.0, -0.5])), float)
+    assert xdot.shape == (4,) and np.isfinite(xdot).all()
+    assert xdot[1] == pytest.approx(x[2], abs=1e-6)  # f32 kernel rounding
 
-    params = load_params()
+    mj_params = load_params()
     model = mujoco.MjModel.from_xml_string(build_mjcf(wheel="cylinder"))
     total_mass = float(np.sum(model.body_mass[1:]))
-    assert total_mass == pytest.approx(19.731467, abs=1e-6)
     assert total_mass == pytest.approx(
-        params["m_b"] + 2.0 * params["m_wheel"],
-        abs=1e-12,
+        mj_params["m_b"] + 2.0 * mj_params["m_wheel"], abs=1e-6
     )
 
 
@@ -169,20 +175,18 @@ def test_grid_axes_come_from_the_release_contract() -> None:
     from vault import config as C
     from vault import grid
 
-    assert [len(axis) for axis in grid.AXES_FULL] == [65, 29, 17, 25]
-    assert [len(axis) for axis in grid.AXES_SMOKE] == [9, 15, 11, 11]
+    # PUBLIC REPO: axes are asserted against the PRIVATE contract read at runtime,
+    # not against literals.
+    contract = get_model_release().load_json("odd_contract")
+    names = ("velocity", "theta", "theta_dot", "yaw_rate")
+    axes = contract["grid_axes"]
+    assert [len(a) for a in grid.AXES_FULL] == [int(axes[n]["nodes"]) for n in names]
     np.testing.assert_allclose(
-        [axis[0] for axis in grid.AXES_FULL],
-        [-6.0, -1.35, -6.0, -4.0],
-        rtol=0.0,
-        atol=1e-12,
-    )
+        [a[0] for a in grid.AXES_FULL],
+        [axes[n]["bounds"][0] for n in names], rtol=0.0, atol=1e-12)
     np.testing.assert_allclose(
-        [axis[-1] for axis in grid.AXES_FULL],
-        [6.0, 1.35, 6.0, 4.0],
-        rtol=0.0,
-        atol=1e-12,
-    )
+        [a[-1] for a in grid.AXES_FULL],
+        [axes[n]["bounds"][1] for n in names], rtol=0.0, atol=1e-12)
     assert grid.AXES_FULL[1][0] < -C.THETA_MAX
     assert grid.AXES_FULL[1][-1] > C.THETA_MAX
 
@@ -192,8 +196,12 @@ def test_environment_spaces_cover_the_contract_reset_domain() -> None:
     from vault.env import BalanceSafetyEnv
     from vault.mujoco_env import ContactSafetyEnv
 
-    # Velocity component follows C.DOMAIN_V, widened to +-6 by the 2026-07-28 ruling.
-    expected_high = np.array([6.0, 1.35, 6.0, 4.0, 1.0], np.float32)
+    # PUBLIC REPO: expected bounds come from the private contract at runtime.
+    contract = get_model_release().load_json("odd_contract")
+    axes = contract["grid_axes"]
+    expected_high = np.array(
+        [axes[n]["bounds"][1] for n in ("velocity", "theta", "theta_dot", "yaw_rate")]
+        + [float(contract["friction"]["range"][1])], np.float32)
     for environment_type in (BalanceSafetyEnv, ContactSafetyEnv):
         environment = environment_type()
         np.testing.assert_allclose(
@@ -281,8 +289,9 @@ def test_yaw_sign_convention() -> None:
     """Pin the torque->yaw sign, in BOTH the reduced model and the MuJoCo plant.
 
     mujoco_plant.py's docstring claimed `tau_L>tau_R drives +psi_dot`. It does not:
-    a left-torque surplus yaws NEGATIVE. The model and the plant agreed all along --
-    only the comment was inverted, and nothing tested it.
+    a left-torque surplus yaws NEGATIVE (sign only; magnitudes stay in the
+    private release). The model and the plant agreed all along -- only the comment
+    was inverted, and nothing tested it.
 
     Asserted as a SIGN and a cross-check, not a magnitude, so it survives regeneration.
     A sign convention is exactly the kind of fact that is cheap to state wrongly and

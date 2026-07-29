@@ -21,7 +21,7 @@ class ModelReleaseError(RuntimeError):
 
 _PKG_ROOT = Path(__file__).resolve().parent
 _REPO_ROOT = _PKG_ROOT.parent
-_LOCAL_LOCK = _PKG_ROOT / "data" / "MODEL_INPUTS.lock.json"
+_LOCAL_LOCK = _PKG_ROOT / "data" / "controller_lock.sha256"
 _RELEASE_SIDECAR = _PKG_ROOT / "data" / "release_artifacts.model.json"
 _CHECKPOINT_MANIFEST = _PKG_ROOT / "data" / "checkpoints_manifest.json"
 
@@ -95,8 +95,15 @@ class ModelRelease:
         self.release_sidecar_path = Path(release_sidecar).resolve()
         self.checkpoint_manifest_path = Path(checkpoint_manifest).resolve()
 
+        # PUBLIC-REPO SANITISATION (2026-07-29): this repository is public, so it
+        # must not CONTAIN the controller lock -- the lock's semantic fields carry
+        # the robot's mass properties, geometry, and deployment gates. The pin is
+        # therefore a sha256 DIGEST of the lock, which reveals nothing, and the
+        # lock itself is read at runtime from the private vault-controller sibling.
+        # The guarantee is unchanged: a byte-identical lock is exactly what a
+        # matching sha256 asserts.
         try:
-            local_bytes = self.local_lock_path.read_bytes()
+            pinned = self.local_lock_path.read_text().split()[0].strip().lower()
             controller_bytes = self.controller_lock_path.read_bytes()
         except FileNotFoundError as exc:
             raise ModelReleaseError(
@@ -104,14 +111,20 @@ class ModelRelease:
                 "VAULT_CONTROLLER_ROOT to the pinned controller checkout "
                 f"(missing {exc.filename})"
             ) from exc
-        if local_bytes != controller_bytes:
+        if not (len(pinned) == 64 and all(c in "0123456789abcdef" for c in pinned)):
+            raise ModelReleaseError(
+                f"pin file {self.local_lock_path} does not hold a sha256 digest"
+            )
+        actual = hashlib.sha256(controller_bytes).hexdigest()
+        if actual != pinned:
             raise ModelReleaseError(
                 "MODEL_INPUTS.lock.json mismatch: safety-stable-baselines and "
-                "vault-controller are not pinned to the same model release"
+                "vault-controller are not pinned to the same model release "
+                f"(pinned {pinned[:12]}…, controller {actual[:12]}…)"
             )
 
-        self.lock_sha256 = hashlib.sha256(local_bytes).hexdigest()
-        self.lock = _read_json(self.local_lock_path)
+        self.lock_sha256 = actual
+        self.lock = json.loads(controller_bytes)
         if self.lock.get("release") != "vault-robot-v2.2-camera-inclusive-reduced-balance":
             raise ModelReleaseError(
                 f"unsupported model release {self.lock.get('release')!r}"

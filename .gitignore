@@ -78,3 +78,9 @@ vault/data/articulated_fcert_residuals_v2_2.npz*
 vault/data/ssb_eval_odd_grid_v2_2_local_residual.npz*
 vault/data/ssb_eval_odd_grid_v2_2_mean_corrected.npz*
 vault/diagnostics/
+
+# PUBLIC REPO: the controller lock and all model-derived artifacts live in the
+# PRIVATE vault-controller sibling. Only sha256 pins and hash sidecars are tracked.
+vault/data/MODEL_INPUTS.lock.json
+vault/data/grid_reachavoid_odd.npz
+vault/docs/*.pdf

@@ -35,25 +35,14 @@ def load_params() -> dict:
 
 
 #  Non-wheel contact-geometry approximation (contact_geometry=True) --------------------
-#  Robert's reduced 4-state model has no full-robot geometry (by design, see CLAUDE.md);
-#  this repo has no chassis/leg CAD either. The dimensions below are read directly from
-#  the real robot's URDF (SafeRoboticsLab/VaultRobot_IsaacLab, delivery_robot_v2), which
-#  is the actual embodiment behind the reduced model (its half-wheel-separation of
-#  0.140375 m matches OPT6_DH in dynamics.py exactly):
-#    right_hip_joint     parent=base_link            xyz="0 -0.26780 -0.05100"
-#    right_...->knee     xyz="0 -0.01577500 0.20350000"   (upper leg span ~0.2035 m)
-#    right_lower->foot   xyz="0 -0.02215000 0.20000"      (lower leg span ~0.2000 m)
-#  i.e. hip mount ~0.05 m below the body_wheel/axle plane, at ~1.91x the wheel's lateral
-#  offset (0.2678 / 0.140375), with a ~0.40 m fully-extended leg. The physical robot's
-#  nominal stance folds the hip/knee so the foot sits near the wheel-contact height
-#  (composite_params.json's own derivation notes describe the legs as "locked ...
-#  tucked" for the reduced model) -- there is no folded-leg kinematics in this planar
-#  plant, so we approximate the tucked leg as a single rigid capsule fixed to the
-#  chassis: outboard of the wheel (no self-overlap), spanning from axle height down to
-#  just short of the ground at nominal upright pose (contacts only once the chassis
-#  pitches/rolls). This is a coarse stand-in for upper_leg_link + lower_leg_link, not a
-#  faithful reproduction of the coupled hip-knee linkage.
-_LEG_Y_RATIO = 0.26780 / 0.140375          # hip lateral offset / body-wheel lateral offset
+#  Robert's reduced 4-state model has no full-robot geometry (by design). The
+#  articulated stand-in below is a COARSE VISUAL/CONTACT approximation of the
+#  tucked legs: a single rigid capsule per side, outboard of the wheel, spanning
+#  from axle height to just short of the ground at upright. The real linkage
+#  geometry lives in the PRIVATE release URDF (vault-controller sibling); only a
+#  dimensionless placement ratio is used here, and it is an approximation, not a
+#  released dimension.
+_LEG_Y_RATIO = 1.91                        # approx hip/wheel lateral placement (dimensionless, visual)
 _LEG_RADIUS = 0.025                        # m, slender capsule (real leg links are thin)
 # Ground clearance: C.LEG_GROUND_CLEARANCE (config.py) -- shared with contact_margin.py, which
 # normalizes by the SAME constant so a nominal upright state's margin is ~1.0, not ~0.02 m.

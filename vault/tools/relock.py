@@ -9,7 +9,7 @@ There are two kinds of record here and they must not be treated alike.
 
 WHAT RELEASE WE ARE PINNED TO -- rewritten by this tool:
 
-  * `vault/data/MODEL_INPUTS.lock.json` -- copied byte-for-byte from the controller
+  * `vault/data/controller_lock.sha256` -- sha256 DIGEST of the controller lock (the lock itself is private and never committed here)
     checkout. The consumer requires byte equality, not semantic equality.
   * `vault/data/release_artifacts.model.json` -- lock digest, the model hashes the
     consumer re-derives from the lock, and the artifact role map.
@@ -49,7 +49,7 @@ sys.path.insert(0, str(REPO))
 
 from vault.model_release import _ARTIFACTS  # noqa: E402
 
-LOCAL_LOCK = REPO / "vault/data/MODEL_INPUTS.lock.json"
+LOCAL_LOCK = REPO / "vault/data/controller_lock.sha256"
 SIDECAR = REPO / "vault/data/release_artifacts.model.json"
 MANIFEST = REPO / "vault/data/checkpoints_manifest.json"
 DATA = REPO / "vault/data"
@@ -121,10 +121,12 @@ def main() -> int:
     sidecar = build_sidecar(lock_bytes, json.loads(lock_bytes))
     lock_sha = sidecar["lock_sha256"]
 
-    current_lock = LOCAL_LOCK.read_bytes() if LOCAL_LOCK.is_file() else b""
+    current_pin = (
+        LOCAL_LOCK.read_text().split()[0] if LOCAL_LOCK.is_file() else ""
+    )
     current_sidecar = json.loads(SIDECAR.read_text()) if SIDECAR.is_file() else {}
     manifest = json.loads(MANIFEST.read_text()) if MANIFEST.is_file() else {}
-    lock_drift = current_lock != lock_bytes
+    lock_drift = current_pin != lock_sha
     sidecar_drift = current_sidecar != sidecar
     manifest_drift = manifest.get("release_lock_sha256") != lock_sha
 
@@ -139,7 +141,10 @@ def main() -> int:
         print("\nin sync with the controller release")
         return 0
 
-    shutil.copyfile(source_lock, LOCAL_LOCK)
+    LOCAL_LOCK.write_text(
+        hashlib.sha256(lock_bytes).hexdigest()
+        + "  models/MODEL_INPUTS.lock.json (sha256 of the PRIVATE vault-controller lock; the lock itself must never be committed here)\n"
+    )
     SIDECAR.write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n")
     print(f"lock      <- {source_lock}")
     print(f"           sha256 {lock_sha}")

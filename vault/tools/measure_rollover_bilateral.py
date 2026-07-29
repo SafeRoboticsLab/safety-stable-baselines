@@ -27,20 +27,11 @@ geometry. The bound credits only the wheel-centre span W/2, which is the conserv
 choice; the simulated cylinders are 40 mm wide and support out to W/2 + 0.02 m. That
 difference shifts both absolute thresholds and largely cancels in the ratio.
 
-Throughout, H is the WHOLE-ROBOT centre-of-mass height above ground,
-z_com + r_w = 0.188559 m. This is NOT h_cm + r_w: h_cm is a sprung-equivalent
-pendulum length that preserves the first moment for the sprung mass, not a geometric
-height, and using it here overstates H by 8.2 mm.
+Throughout, H is the WHOLE-ROBOT centre-of-mass height above ground (z_com + r_w),
+read from the private release -- NOT h_cm + r_w, which is a frame mismatch.
 
-Measured 2026-07-28 (unladen, tucked, static hold-and-settle bisection):
-
-                                a(+y) toward   a(-y) away    ratio
-    analytic, wheel-centre W/2      6.9246        7.6817     1.10934   <- shipped
-    analytic, rim W/2+half_width    7.9651        8.7222     1.09506
-    MEASURED                        7.6842        8.4229     1.09614
-
-    static per-wheel load, measured   +y 101.70 N   -y  91.86 N
-    static per-wheel load, predicted  +y 101.80 N   -y  91.77 N
+Measured results (2026-07-28 hold-and-settle bisection) are recorded in the
+PRIVATE handoff document: vault-controller/docs/ssb_handoff/CHANGES_TO_THE_MODEL_LAYER.md.
 
 Reading: the measured ratio matches the rim-credit prediction to 0.099% and the
 wheel-centre prediction to 1.19%, so the simulated contact behaves as though
@@ -75,8 +66,12 @@ import verify_urdf_composite as V  # noqa: E402
 
 URDF = CONTROLLER / "models/source/urdf/tucked_v2_2/robot.urdf"
 GRAV = 9.81
-WHEEL_R = 0.12705
-HALF_WIDTH = 0.02          # shipped modelling value, models/source/geometry
+# PUBLIC REPO: wheel geometry is read from the private release at runtime.
+import json as _json
+_GEOM = _json.loads((CONTROLLER / "models/source/geometry/model_geometry.json").read_text())
+_PARAMS = _json.loads((CONTROLLER / "models/generated/reduced/composite_params.json").read_text())
+WHEEL_R = float(_PARAMS["wheel_radius"])
+HALF_WIDTH = float(_GEOM["wheel_contact_half_width"])
 FRICTION = 'friction="1 .005 .0001" condim="6"'
 
 
