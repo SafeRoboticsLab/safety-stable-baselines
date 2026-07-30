@@ -272,7 +272,7 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
     if contact_geometry:
         # Chassis: same box, now with real collision (permitted-contact set excludes it).
         base_vis = (f'<geom name="chassis_geom" type="box" size="0.06 {d} 0.06" pos="0 0 {h_cm}" '
-                    f'friction="{mu} 0.005 0.0001" condim="6" solref="{solref[0]} {solref[1]}" '
+                    f'friction="{mu} 0.005 0.0001" condim="6" solref="{solref[0]} {solref[1]}"{hide} '
                     f'rgba="0.4 0.5 0.8 0.4"/>')
         leg_y = d * _LEG_Y_RATIO
         # Capsule "fromto" endpoint is the segment end, not the rounded surface -- the actual
@@ -283,7 +283,7 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
         leg_geoms = "".join(
             f'<geom name="{side}_leg_geom" type="capsule" '
             f'fromto="0 {sign * leg_y} 0  0 {sign * leg_y} {leg_bottom}" size="{_LEG_RADIUS}" '
-            f'friction="{mu} 0.005 0.0001" condim="6" solref="{solref[0]} {solref[1]}" '
+            f'friction="{mu} 0.005 0.0001" condim="6" solref="{solref[0]} {solref[1]}"{hide} '
             f'rgba="0.6 0.3 0.3 0.6"/>'
             for side, sign in (("right", -1), ("left", 1))
         )
