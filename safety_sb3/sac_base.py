@@ -147,9 +147,15 @@ class AbstractSAC(GammaAnnealMixin, SAC):
     """Compute the log-space alpha clamp bounds and snapshot the init
     log_ent_coef (so a gamma jump can reset alpha to it)."""
     import math
-    self._log_min_alpha = (None if self._min_alpha is None
+    # A NON-POSITIVE bound means "no bound": log() is undefined there, and a
+    # floor of 0 is exactly the request to let alpha decay freely. Treating it
+    # as None rather than raising matters because `--min-alpha 0` is the
+    # natural way to ASK for an unfloored run, and a math domain error at
+    # construction kills the run before it starts (E056 lost two cells this
+    # way, leaving the min_alpha hypothesis untested).
+    self._log_min_alpha = (None if not self._min_alpha or self._min_alpha <= 0
                            else math.log(self._min_alpha))
-    self._log_max_alpha = (None if self._max_alpha is None
+    self._log_max_alpha = (None if not self._max_alpha or self._max_alpha <= 0
                            else math.log(self._max_alpha))
     lec = getattr(self, "log_ent_coef", None)   # None for a FIXED ent_coef
     self._init_log_ent_coef = None if lec is None else lec.detach().clone()
@@ -258,6 +264,17 @@ class AbstractSAC(GammaAnnealMixin, SAC):
       actions = th.clamp(actions, low, high)
 
       new_obs, g, dones, timeouts, l_x = env.step_tensor(actions)
+      # An env may EXECUTE something other than what it was handed: a safety
+      # filter replacing an uncertified proposal with its fallback's action is
+      # the case this exists for. The buffer must hold the transition that
+      # ACTUALLY happened -- storing the proposal against the resulting
+      # (reward, next state) would fit the critic to a transition that never
+      # occurred. Off-policy learning makes the substitution exactly correct
+      # with no importance correction, which is why filtered training is run
+      # with SAC. An env that does not override leaves `actions` untouched.
+      executed = getattr(env, "executed_action", None)
+      if executed is not None:
+        actions = executed
       self.num_timesteps += env.num_envs
       num_collected_steps += 1
 

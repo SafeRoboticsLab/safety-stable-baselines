@@ -161,6 +161,22 @@ class TensorVecNormalize(TensorVecEnv):
   def metrics(self) -> dict[str, float]:
     return self.venv.metrics()
 
+  @property
+  def executed_action(self):
+    """What the WRAPPED env actually applied last step, or None.
+
+    An env may execute something other than the action it was handed -- a
+    training-time safety filter substituting its fallback is the case this
+    exists for -- and the off-policy collector reads it back so the replay
+    buffer holds the transition that really happened. This class has no
+    ``__getattr__``, so without an explicit forward the readback would find
+    nothing on the wrapper, silently keep the PROPOSED action, and the buffer
+    would fill with actions that were never applied. That failure is invisible
+    from the outside: training runs, the curves look plausible, and the critic
+    is fit to transitions that never occurred.
+    """
+    return getattr(self.venv, "executed_action", None)
+
   def close(self) -> None:
     self.venv.close()
 
