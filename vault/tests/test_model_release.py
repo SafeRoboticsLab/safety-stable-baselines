@@ -339,3 +339,32 @@ def test_visual_meshes_do_not_change_dynamics() -> None:
     (q1, v1), (q2, v2) = runs
     assert np.array_equal(q1, q2), "mesh overlay changed qpos -- it is not visual-only"
     assert np.array_equal(v1, v2), "mesh overlay changed qvel -- it is not visual-only"
+
+
+def test_mesh_overlay_orientations_survive_pi_rotations() -> None:
+    """Regression for the w=0 quaternion collapse, caught from a single render.
+
+    The tucked fold rotates the lower legs by EXACTLY pi, where the naive
+    quaternion conversion's w is exactly zero; an earlier version short-circuited
+    that to identity, producing correct positions with discarded orientations
+    ("feet right, lower leg wrong, chain broken"). Reconstruct the emitted
+    lower-leg quaternion and require it to be a genuine y-axis half-turn.
+    """
+    import re
+    from vault.mujoco_model import _visual_mesh_overlay
+
+    overlay = _visual_mesh_overlay()
+    if overlay is None:
+        pytest.skip("vault-controller sibling not available")
+    for side in ("right", "left"):
+        match = re.search(
+            rf'mesh="vis_{side}_lower_leg_link" pos="[^"]+" quat="([^"]+)"',
+            overlay["chassis"])
+        assert match, f"{side} lower leg missing from the overlay"
+        w, x, y, z = (float(v) for v in match.group(1).split())
+        # unit quaternion
+        assert abs(w*w + x*x + y*y + z*z - 1.0) < 1e-9
+        # a HALF-TURN about y: w == 0 (the exact case that used to collapse), y == +-1
+        assert abs(w) < 1e-9 and abs(abs(y) - 1.0) < 1e-9 and abs(x) < 1e-9 and abs(z) < 1e-9, (
+            f"{side} lower-leg quat {match.group(1)} is not the knee's pi fold -- "
+            f"if this reads (1,0,0,0) the w=0 collapse has been reintroduced")
