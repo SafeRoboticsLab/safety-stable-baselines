@@ -325,17 +325,26 @@ def test_visual_meshes_do_not_change_dynamics() -> None:
     controls for 500 steps, qpos/qvel compared exactly.
     """
     mujoco = pytest.importorskip("mujoco")
-    from vault.mujoco_model import build_mjcf
+    from vault.mujoco_model import _visual_mesh_overlay, build_mjcf
 
-    runs = []
+    if _visual_mesh_overlay() is None:
+        pytest.skip("vault-controller release meshes not available")
+
+    runs, nmesh = [], {}
     for mode in ("auto", "off"):
         m = mujoco.MjModel.from_xml_string(
             build_mjcf(wheel="cylinder", visual_meshes=mode))
+        nmesh[mode] = m.nmesh
         d = mujoco.MjData(m)
         for k in range(500):
             d.ctrl[:] = (0.4 * np.sin(0.01 * k), -0.3 * np.cos(0.013 * k))
             mujoco.mj_step(m, d)
         runs.append((d.qpos.copy(), d.qvel.copy()))
+    # Guard against a vacuous pass: if the overlay silently failed to load, both
+    # runs are primitive-only and equality proves nothing. "auto" must actually
+    # carry mesh assets that "off" does not.
+    assert nmesh["auto"] > nmesh["off"], (
+        "overlay did not load any meshes -- the comparison below would be vacuous")
     (q1, v1), (q2, v2) = runs
     assert np.array_equal(q1, q2), "mesh overlay changed qpos -- it is not visual-only"
     assert np.array_equal(v1, v2), "mesh overlay changed qvel -- it is not visual-only"
@@ -368,3 +377,49 @@ def test_mesh_overlay_orientations_survive_pi_rotations() -> None:
         assert abs(w) < 1e-9 and abs(abs(y) - 1.0) < 1e-9 and abs(x) < 1e-9 and abs(z) < 1e-9, (
             f"{side} lower-leg quat {match.group(1)} is not the knee's pi fold -- "
             f"if this reads (1,0,0,0) the w=0 collapse has been reintroduced")
+
+
+def test_mesh_overlay_degrades_with_warning_on_malformed_assets(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Containment contract for the overlay (Codex audit items 2 and 4).
+
+    Silent None is reserved for "sibling not checked out". Once the checkout IS
+    found, malformed content must degrade to primitive rendering WITH a warning
+    naming the reason -- never a wrong render, never an exception escaping
+    build_mjcf. Exercised with a checkout whose URDF lacks the wheel joints the
+    plant-frame cross-check requires.
+    """
+    from vault.mujoco_model import _check_mesh_asset, _visual_mesh_overlay, build_mjcf
+
+    root = tmp_path / "vault-controller"
+    (root / "models/source/urdf/articulated_v2_2").mkdir(parents=True)
+    (root / "models/assets/meshes_decimated").mkdir(parents=True)
+    (root / "models/source/urdf/articulated_v2_2/robot.urdf").write_text(
+        '<robot name="r"><link name="base_link"><visual>'
+        '<geometry><mesh filename="package://x/body.stl"/></geometry>'
+        '</visual></link></robot>')
+    monkeypatch.setenv("VAULT_CONTROLLER_ROOT", str(root))
+
+    with pytest.warns(UserWarning, match="overlay disabled"):
+        assert _visual_mesh_overlay(wheel_half_sep=0.14) is None
+    # ...and the full build still degrades to a valid primitive-only model.
+    with pytest.warns(UserWarning, match="overlay disabled"):
+        mjcf = build_mjcf(wheel="cylinder", visual_meshes="auto")
+    assert "vis_" not in mjcf and 'group="3"' not in mjcf
+
+    # Mesh integrity checks: corrupt bytes rejected up front (not inside MuJoCo),
+    # valid binary STL and ASCII STL accepted, unsupported formats rejected.
+    corrupt = root / "models/assets/meshes_decimated/body.stl"
+    corrupt.write_bytes(b"\x00" * 200)
+    with pytest.raises(ValueError, match="corrupt STL"):
+        _check_mesh_asset(corrupt)
+    binary_ok = tmp_path / "ok.stl"
+    binary_ok.write_bytes(bytes(80) + (1).to_bytes(4, "little") + bytes(50))
+    _check_mesh_asset(binary_ok)
+    ascii_ok = tmp_path / "ok_ascii.stl"
+    ascii_ok.write_text("solid part\nendsolid part\n")
+    _check_mesh_asset(ascii_ok)
+    dae = tmp_path / "body.dae"
+    dae.write_text("<COLLADA/>")
+    with pytest.raises(ValueError, match="unsupported mesh format"):
+        _check_mesh_asset(dae)

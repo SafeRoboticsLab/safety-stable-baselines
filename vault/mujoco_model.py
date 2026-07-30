@@ -50,27 +50,36 @@ _LEG_RADIUS = 0.025                        # m, slender capsule (real leg links 
 # normalizes by the SAME constant so a nominal upright state's margin is ~1.0, not ~0.02 m.
 
 
-def _visual_mesh_overlay() -> dict | None:
+def _visual_mesh_overlay(wheel_half_sep: float | None = None) -> dict | None:
     """Release-mesh visual overlay, resolved from the PRIVATE sibling at runtime.
 
-    Returns None (silently) when vault-controller is not checked out or the assets
-    are missing -- the plant then renders its primitive geoms exactly as before.
-    Everything here is read at runtime: mesh paths, link names, and placements come
-    from the private articulated URDF, so this PUBLIC file carries no dimensions.
+    Returns None SILENTLY only when vault-controller is not checked out -- the
+    plant then renders its primitive geoms exactly as before. Once the checkout is
+    found, any malformed content (unparseable URDF, missing/corrupt/unsupported
+    mesh, malformed joint, kinematic cycle, lock mismatch, broken wheel-frame
+    invariant) degrades to primitives WITH a warning naming the reason, never a
+    wrong render. Everything here is read at runtime: mesh paths, link names, and
+    placements come from the private articulated URDF, so this PUBLIC file carries
+    no dimensions.
+
+    The URDF is verified against the controller release lock when the lock is
+    readable, so a dirty/stale visual source cannot silently ride alongside
+    hash-validated dynamics params. The decimated meshes are NOT pinned by the
+    lock today; they get format and structural-integrity checks only.
 
     ALL mesh-bearing links are attached, not just chassis+wheels: leg linkages,
     knee wheels and feet are posed by forward kinematics at the TUCKED display
-    configuration (knees at 180 deg, all else zero) and fixed to the chassis body, since the reduced plant has no leg
-    joints. The two body-wheel meshes attach to the spinning wheel bodies.
+    configuration (knees at 180 deg, all else zero) and fixed to the chassis body,
+    since the reduced plant has no leg joints. The two body-wheel meshes attach to
+    the spinning wheel bodies, whose URDF joint frames are cross-checked against
+    the plant's generated wheel frames (identity rotation at (0, +-wheel_sep/2, 0)).
 
     The overlay is VISUAL ONLY: contype=0 conaffinity=0, display group 2; every
     body keeps its explicit <inertial>. Dynamics equality is pinned by
     test_visual_meshes_do_not_change_dynamics.
     """
     import os
-    import xml.etree.ElementTree as ET
-
-    import numpy as np
+    import warnings
 
     root = Path(
         os.environ.get("VAULT_CONTROLLER_ROOT")
@@ -81,9 +90,57 @@ def _visual_mesh_overlay() -> dict | None:
     if not (urdf.is_file() and meshdir.is_dir()):
         return None
     try:
-        tree = ET.parse(urdf).getroot()
-    except ET.ParseError:
+        return _build_mesh_overlay(root, urdf, meshdir, wheel_half_sep)
+    except Exception as exc:
+        warnings.warn(
+            f"release-mesh overlay disabled ({exc}); rendering primitive geoms",
+            stacklevel=2)
         return None
+
+
+def _check_mesh_asset(path: Path) -> None:
+    """Reject missing, unsupported, or structurally corrupt mesh files up front,
+    so a bad asset degrades to primitives here instead of raising later inside
+    MjModel.from_xml_string. MuJoCo accepts STL/OBJ/MSH; STL (all we ship) also
+    gets an integrity check: binary size must match its triangle count."""
+    if not path.is_file():
+        raise ValueError(f"mesh not found: {path.name}")
+    suffix = path.suffix.lower()
+    if suffix not in (".stl", ".obj", ".msh"):
+        raise ValueError(f"unsupported mesh format: {path.name}")
+    if suffix == ".stl":
+        size = path.stat().st_size
+        with open(path, "rb") as fh:
+            head = fh.read(84)
+        if len(head) == 84:
+            ntri = int.from_bytes(head[80:84], "little")
+            if size == 84 + 50 * ntri:
+                return
+        if head[:5].lower() == b"solid":
+            return                      # ASCII STL
+        raise ValueError(f"corrupt STL (size/triangle-count mismatch): {path.name}")
+
+
+def _build_mesh_overlay(root: Path, urdf: Path, meshdir: Path,
+                        wheel_half_sep: float | None) -> dict:
+    """The actual overlay builder. Raises on ANY malformed input; the caller
+    turns that into warn-and-degrade."""
+    import hashlib
+    import json
+    import xml.etree.ElementTree as ET
+
+    import numpy as np
+
+    tree = ET.parse(urdf).getroot()
+
+    # Dirty/stale guard: the visual source must be the SAME bytes the release
+    # lock pinned, matching the hash discipline the dynamics params get.
+    lock_path = root / "models/MODEL_INPUTS.lock.json"
+    if lock_path.is_file():
+        pinned = json.loads(lock_path.read_text()).get("release_files", {}).get(
+            "models/source/urdf/articulated_v2_2/robot.urdf")
+        if pinned and hashlib.sha256(urdf.read_bytes()).hexdigest() != pinned:
+            raise ValueError("articulated URDF does not match the release lock")
 
     def rot(rpy):
         r, p_, y = rpy
@@ -101,36 +158,55 @@ def _visual_mesh_overlay() -> dict | None:
     # at zero. This is a VISUAL pose only.
     TUCKED_Q = {"right_knee_joint": np.pi, "left_knee_joint": np.pi}
 
-    def axis_rot(axis, angle):
-        a = axis / (np.linalg.norm(axis) or 1.0)
+    def axis_rot(a, angle):
+        # a must already be unit-norm; callers validate before normalizing.
         K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
         return np.eye(3) + np.sin(angle) * K + (1 - np.cos(angle)) * (K @ K)
 
     # joint tree: child link -> (parent link, R, t) at the DISPLAY configuration
     parent_of: dict[str, tuple[str, np.ndarray, np.ndarray]] = {}
     for j in tree.iter("joint"):
+        jname, jtype = j.get("name"), j.get("type")
+        parent, child = j.find("parent"), j.find("child")
+        if parent is None or child is None:
+            raise ValueError(f"joint {jname}: missing <parent> or <child>")
+        child_link = child.get("link")
+        if child_link in parent_of:
+            raise ValueError(f"link {child_link}: more than one parent joint")
         o = j.find("origin")
         R_origin = rot(vec(o.get("rpy") if o is not None else None))
-        angle = TUCKED_Q.get(j.get("name"), 0.0)
+        angle = TUCKED_Q.get(jname, 0.0)
         if angle:
+            if jtype not in ("revolute", "continuous"):
+                raise ValueError(
+                    f"tucked joint {jname} is type {jtype!r}, expected revolute/continuous")
             ax = j.find("axis")
-            R_origin = R_origin @ axis_rot(
-                vec(ax.get("xyz") if ax is not None else "1 0 0"), angle)
-        parent_of[j.find("child").get("link")] = (
-            j.find("parent").get("link"),
+            # URDF: an ABSENT <axis> defaults to +X; a PRESENT <axis> without xyz
+            # is malformed (it must not silently become a no-op rotation).
+            if ax is not None and ax.get("xyz") is None:
+                raise ValueError(f"joint {jname}: <axis> element without xyz")
+            axis = vec(ax.get("xyz")) if ax is not None else np.array([1.0, 0.0, 0.0])
+            norm = float(np.linalg.norm(axis))
+            if norm < 1e-9:
+                raise ValueError(f"joint {jname}: zero axis on a rotated tucked joint")
+            R_origin = R_origin @ axis_rot(axis / norm, angle)
+        parent_of[child_link] = (
+            parent.get("link"),
             R_origin,
             vec(o.get("xyz") if o is not None else None),
         )
 
     def fk(link):
-        """Pose of link frame in base_link frame at zero configuration."""
+        """Pose of link frame in base_link frame at the display configuration."""
         R, t = np.eye(3), np.zeros(3)
         chain = []
         while link in parent_of:
             chain.append(parent_of[link])
             link = parent_of[link][0]
+            if len(chain) > len(parent_of):
+                raise ValueError("joint graph contains a cycle")
         if link != "base_link":
-            return None
+            raise ValueError(f"kinematic chain roots at {link!r}, not base_link")
         for _, Rj, tj in reversed(chain):
             t = R @ tj + t
             R = R @ Rj
@@ -164,40 +240,61 @@ def _visual_mesh_overlay() -> dict | None:
         return f"{w:.8f} {x:.8f} {y:.8f} {z:.8f}"
 
     WHEELS = {"right_body_wheel_link": "right_wheel", "left_body_wheel_link": "left_wheel"}
+
+    # The wheel meshes bypass fk(): their geoms attach to the PLANT's spinning
+    # wheel bodies, which build_mjcf generates independently at identity rotation,
+    # (0, -+wheel_sep/2, 0) in the chassis frame. That is an invariant between two
+    # separately-authored frame definitions, so VERIFY it instead of trusting it:
+    # any drift in the URDF wheel joints must degrade, not render wrong wheels.
+    if wheel_half_sep is None:
+        wheel_half_sep = load_params()["wheel_sep"] / 2.0
+    for wlink, sign in (("right_body_wheel_link", -1.0), ("left_body_wheel_link", 1.0)):
+        if wlink not in parent_of:
+            raise ValueError(f"URDF has no joint for {wlink}")
+        Rw, tw = fk(wlink)
+        expected = np.array([0.0, sign * wheel_half_sep, 0.0])
+        if not (np.allclose(Rw, np.eye(3), atol=1e-9)
+                and np.allclose(tw, expected, atol=1e-6)):
+            raise ValueError(
+                f"{wlink} joint frame {tw} does not match the plant wheel frame "
+                f"{expected} -- wheel overlay would render at the wrong pose")
+
     assets, chassis_geoms, wheel_geoms = [], [], {"right_wheel": "", "left_wheel": ""}
     for link in tree.iter("link"):
         name = link.get("name")
-        vis = link.find("visual")
-        mesh = vis.find("geometry/mesh") if vis is not None else None
-        if mesh is None:
-            continue
-        stl = meshdir / Path(mesh.get("filename", "")).name
-        if not stl.is_file():
-            return None
-        o = vis.find("origin")
-        Rv = rot(vec(o.get("rpy") if o is not None else None))
-        tv = vec(o.get("xyz") if o is not None else None)
-        mid = f"vis_{name}"
-        assets.append(f'<mesh name="{mid}" file="{stl}"/>')
-        if name in WHEELS:
-            # wheel link frame == wheel body frame (joint at the axle)
-            wheel_geoms[WHEELS[name]] = (
-                f'<geom type="mesh" mesh="{mid}" pos="{tv[0]} {tv[1]} {tv[2]}" '
-                f'quat="{quat(Rv)}" contype="0" conaffinity="0" group="2" '
-                f'rgba="0.25 0.25 0.27 1"/>')
-            continue
-        pose = fk(name)
-        if pose is None:
-            return None
-        Rl, tl = pose
-        Rg, tg = Rl @ Rv, Rl @ tv + tl
-        rgba = "0.88 0.88 0.90 1" if name == "base_link" else "0.72 0.74 0.78 1"
-        chassis_geoms.append(
-            f'<geom type="mesh" mesh="{mid}" pos="{tg[0]:.8f} {tg[1]:.8f} {tg[2]:.8f}" '
-            f'quat="{quat(Rg)}" contype="0" conaffinity="0" group="2" rgba="{rgba}"/>')
+        # ALL <visual> elements, not only the first; each gets its own MJCF mesh
+        # asset because per-visual scale attributes may differ.
+        for vi, vis in enumerate(link.findall("visual")):
+            mesh = vis.find("geometry/mesh")
+            if mesh is None:
+                continue
+            stl = meshdir / Path(mesh.get("filename", "")).name
+            _check_mesh_asset(stl)
+            scale = mesh.get("scale")
+            if scale is not None and len(vec(scale)) != 3:
+                raise ValueError(f"link {name} visual {vi}: malformed mesh scale")
+            scale_attr = f' scale="{scale}"' if scale is not None else ""
+            o = vis.find("origin")
+            Rv = rot(vec(o.get("rpy") if o is not None else None))
+            tv = vec(o.get("xyz") if o is not None else None)
+            mid = f"vis_{name}" if vi == 0 else f"vis_{name}_{vi}"
+            assets.append(f'<mesh name="{mid}" file="{stl}"{scale_attr}/>')
+            if name in WHEELS:
+                # wheel link frame == plant wheel body frame (verified above)
+                wheel_geoms[WHEELS[name]] += (
+                    f'<geom type="mesh" mesh="{mid}" pos="{tv[0]} {tv[1]} {tv[2]}" '
+                    f'quat="{quat(Rv)}" contype="0" conaffinity="0" group="2" '
+                    f'rgba="0.25 0.25 0.27 1"/>')
+                continue
+            Rl, tl = fk(name)
+            Rg, tg = Rl @ Rv, Rl @ tv + tl
+            rgba = "0.88 0.88 0.90 1" if name == "base_link" else "0.72 0.74 0.78 1"
+            chassis_geoms.append(
+                f'<geom type="mesh" mesh="{mid}" pos="{tg[0]:.8f} {tg[1]:.8f} {tg[2]:.8f}" '
+                f'quat="{quat(Rg)}" contype="0" conaffinity="0" group="2" rgba="{rgba}"/>')
 
     if not chassis_geoms or not all(wheel_geoms.values()):
-        return None
+        raise ValueError("URDF yielded no chassis meshes or is missing a wheel mesh")
     return {
         "asset": "<asset>" + "".join(assets) + "</asset>",
         "chassis": "".join(chassis_geoms),
@@ -241,7 +338,7 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
     # planar dynamics we certify.
     I_roll = max(I_yaw_chassis, abs(I_yaw_chassis - I_pitch) + 1e-3)
 
-    overlay = _visual_mesh_overlay() if visual_meshes == "auto" else None
+    overlay = _visual_mesh_overlay(wheel_half_sep=d) if visual_meshes == "auto" else None
     # When meshes are active, primitive geoms move to display group 3 (hidden by
     # default in viewer and Renderer) -- PURELY visual; contact and inertial
     # behaviour is untouched, which test_visual_meshes_do_not_change_dynamics pins.
