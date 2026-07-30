@@ -58,13 +58,20 @@ def _visual_mesh_overlay() -> dict | None:
     Everything here is read at runtime: mesh paths, link names, and placements come
     from the private articulated URDF, so this PUBLIC file carries no dimensions.
 
-    The overlay is VISUAL ONLY: mesh geoms are emitted with contype=0 conaffinity=0
-    in display group 2, and all bodies keep their explicit <inertial> blocks, so
-    dynamics are bit-identical with the overlay on or off (pinned by
-    test_visual_meshes_do_not_change_dynamics).
+    ALL mesh-bearing links are attached, not just chassis+wheels: leg linkages,
+    knee wheels and feet are posed by forward kinematics at the articulated URDF's
+    zero configuration (pure composition of joint origins -- no joint-angle source
+    is needed) and fixed to the chassis body, since the reduced plant has no leg
+    joints. The two body-wheel meshes attach to the spinning wheel bodies.
+
+    The overlay is VISUAL ONLY: contype=0 conaffinity=0, display group 2; every
+    body keeps its explicit <inertial>. Dynamics equality is pinned by
+    test_visual_meshes_do_not_change_dynamics.
     """
     import os
     import xml.etree.ElementTree as ET
+
+    import numpy as np
 
     root = Path(
         os.environ.get("VAULT_CONTROLLER_ROOT")
@@ -79,42 +86,90 @@ def _visual_mesh_overlay() -> dict | None:
     except ET.ParseError:
         return None
 
-    wanted = {"base_link": "chassis", "right_body_wheel_link": "right_wheel",
-              "left_body_wheel_link": "left_wheel"}
-    out: dict[str, tuple[str, str, str]] = {}
+    def rot(rpy):
+        r, p_, y = rpy
+        cr, sr, cp, sp, cy, sy = np.cos(r), np.sin(r), np.cos(p_), np.sin(p_), np.cos(y), np.sin(y)
+        Rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+        Ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+        Rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+        return Rz @ Ry @ Rx
+
+    def vec(s, n=3):
+        return np.array([float(x) for x in (s or " ".join(["0"] * n)).split()])
+
+    # joint tree: child link -> (parent link, R, t) at ZERO configuration
+    parent_of: dict[str, tuple[str, np.ndarray, np.ndarray]] = {}
+    for j in tree.iter("joint"):
+        o = j.find("origin")
+        parent_of[j.find("child").get("link")] = (
+            j.find("parent").get("link"),
+            rot(vec(o.get("rpy") if o is not None else None)),
+            vec(o.get("xyz") if o is not None else None),
+        )
+
+    def fk(link):
+        """Pose of link frame in base_link frame at zero configuration."""
+        R, t = np.eye(3), np.zeros(3)
+        chain = []
+        while link in parent_of:
+            chain.append(parent_of[link])
+            link = parent_of[link][0]
+        if link != "base_link":
+            return None
+        for _, Rj, tj in reversed(chain):
+            t = R @ tj + t
+            R = R @ Rj
+        return R, t
+
+    def quat(R):
+        w = np.sqrt(max(0.0, 1 + R[0, 0] + R[1, 1] + R[2, 2])) / 2
+        if w < 1e-9:
+            return "1 0 0 0"
+        x = (R[2, 1] - R[1, 2]) / (4 * w)
+        y = (R[0, 2] - R[2, 0]) / (4 * w)
+        z = (R[1, 0] - R[0, 1]) / (4 * w)
+        return f"{w:.8f} {x:.8f} {y:.8f} {z:.8f}"
+
+    WHEELS = {"right_body_wheel_link": "right_wheel", "left_body_wheel_link": "left_wheel"}
+    assets, chassis_geoms, wheel_geoms = [], [], {"right_wheel": "", "left_wheel": ""}
     for link in tree.iter("link"):
         name = link.get("name")
-        if name not in wanted:
-            continue
         vis = link.find("visual")
         mesh = vis.find("geometry/mesh") if vis is not None else None
         if mesh is None:
-            return None
+            continue
         stl = meshdir / Path(mesh.get("filename", "")).name
         if not stl.is_file():
             return None
-        origin = vis.find("origin")
-        xyz = (origin.get("xyz", "0 0 0") if origin is not None else "0 0 0")
-        rpy = (origin.get("rpy", "0 0 0") if origin is not None else "0 0 0")
-        euler = " ".join(f"{float(v) * 57.29577951308232:.6f}" for v in rpy.split())
-        out[wanted[name]] = (str(stl), xyz, euler)
-    if set(out) != set(wanted.values()):
+        o = vis.find("origin")
+        Rv = rot(vec(o.get("rpy") if o is not None else None))
+        tv = vec(o.get("xyz") if o is not None else None)
+        mid = f"vis_{name}"
+        assets.append(f'<mesh name="{mid}" file="{stl}"/>')
+        if name in WHEELS:
+            # wheel link frame == wheel body frame (joint at the axle)
+            wheel_geoms[WHEELS[name]] = (
+                f'<geom type="mesh" mesh="{mid}" pos="{tv[0]} {tv[1]} {tv[2]}" '
+                f'quat="{quat(Rv)}" contype="0" conaffinity="0" group="2" '
+                f'rgba="0.25 0.25 0.27 1"/>')
+            continue
+        pose = fk(name)
+        if pose is None:
+            return None
+        Rl, tl = pose
+        Rg, tg = Rl @ Rv, Rl @ tv + tl
+        rgba = "0.88 0.88 0.90 1" if name == "base_link" else "0.72 0.74 0.78 1"
+        chassis_geoms.append(
+            f'<geom type="mesh" mesh="{mid}" pos="{tg[0]:.8f} {tg[1]:.8f} {tg[2]:.8f}" '
+            f'quat="{quat(Rg)}" contype="0" conaffinity="0" group="2" rgba="{rgba}"/>')
+
+    if not chassis_geoms or not all(wheel_geoms.values()):
         return None
-
-    assets = "<asset>" + "".join(
-        f'<mesh name="vis_{body}" file="{stl}"/>' for body, (stl, _, _) in out.items()
-    ) + "</asset>"
-
-    def geom(body: str, rgba: str) -> str:
-        stl, xyz, euler = out[body]
-        return (f'<geom type="mesh" mesh="vis_{body}" pos="{xyz}" euler="{euler}" '
-                f'contype="0" conaffinity="0" group="2" rgba="{rgba}"/>')
-
     return {
-        "asset": assets,
-        "chassis": geom("chassis", "0.88 0.88 0.90 1"),
-        "right_wheel": geom("right_wheel", "0.25 0.25 0.27 1"),
-        "left_wheel": geom("left_wheel", "0.25 0.25 0.27 1"),
+        "asset": "<asset>" + "".join(assets) + "</asset>",
+        "chassis": "".join(chassis_geoms),
+        "right_wheel": wheel_geoms["right_wheel"],
+        "left_wheel": wheel_geoms["left_wheel"],
     }
 
 
