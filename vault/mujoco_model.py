@@ -21,6 +21,8 @@ print the assembly invariants.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from . import config as C
 from .model_release import get_model_release
 
@@ -48,10 +50,78 @@ _LEG_RADIUS = 0.025                        # m, slender capsule (real leg links 
 # normalizes by the SAME constant so a nominal upright state's margin is ~1.0, not ~0.02 m.
 
 
+def _visual_mesh_overlay() -> dict | None:
+    """Release-mesh visual overlay, resolved from the PRIVATE sibling at runtime.
+
+    Returns None (silently) when vault-controller is not checked out or the assets
+    are missing -- the plant then renders its primitive geoms exactly as before.
+    Everything here is read at runtime: mesh paths, link names, and placements come
+    from the private articulated URDF, so this PUBLIC file carries no dimensions.
+
+    The overlay is VISUAL ONLY: mesh geoms are emitted with contype=0 conaffinity=0
+    in display group 2, and all bodies keep their explicit <inertial> blocks, so
+    dynamics are bit-identical with the overlay on or off (pinned by
+    test_visual_meshes_do_not_change_dynamics).
+    """
+    import os
+    import xml.etree.ElementTree as ET
+
+    root = Path(
+        os.environ.get("VAULT_CONTROLLER_ROOT")
+        or Path(__file__).resolve().parents[2] / "vault-controller"
+    )
+    urdf = root / "models/source/urdf/articulated_v2_2/robot.urdf"
+    meshdir = root / "models/assets/meshes_decimated"   # highres exceeds MuJoCo's decoder
+    if not (urdf.is_file() and meshdir.is_dir()):
+        return None
+    try:
+        tree = ET.parse(urdf).getroot()
+    except ET.ParseError:
+        return None
+
+    wanted = {"base_link": "chassis", "right_body_wheel_link": "right_wheel",
+              "left_body_wheel_link": "left_wheel"}
+    out: dict[str, tuple[str, str, str]] = {}
+    for link in tree.iter("link"):
+        name = link.get("name")
+        if name not in wanted:
+            continue
+        vis = link.find("visual")
+        mesh = vis.find("geometry/mesh") if vis is not None else None
+        if mesh is None:
+            return None
+        stl = meshdir / Path(mesh.get("filename", "")).name
+        if not stl.is_file():
+            return None
+        origin = vis.find("origin")
+        xyz = (origin.get("xyz", "0 0 0") if origin is not None else "0 0 0")
+        rpy = (origin.get("rpy", "0 0 0") if origin is not None else "0 0 0")
+        euler = " ".join(f"{float(v) * 57.29577951308232:.6f}" for v in rpy.split())
+        out[wanted[name]] = (str(stl), xyz, euler)
+    if set(out) != set(wanted.values()):
+        return None
+
+    assets = "<asset>" + "".join(
+        f'<mesh name="vis_{body}" file="{stl}"/>' for body, (stl, _, _) in out.items()
+    ) + "</asset>"
+
+    def geom(body: str, rgba: str) -> str:
+        stl, xyz, euler = out[body]
+        return (f'<geom type="mesh" mesh="vis_{body}" pos="{xyz}" euler="{euler}" '
+                f'contype="0" conaffinity="0" group="2" rgba="{rgba}"/>')
+
+    return {
+        "asset": assets,
+        "chassis": geom("chassis", "0.88 0.88 0.90 1"),
+        "right_wheel": geom("right_wheel", "0.25 0.25 0.27 1"),
+        "left_wheel": geom("left_wheel", "0.25 0.25 0.27 1"),
+    }
+
+
 def build_mjcf(wheel: str = "torus", mu: float = 1.0,
                params: dict | None = None, solref: tuple = (0.02, 1.0), margin: float = 0.0,
                imu_pos: tuple | None = None, imu_quat: tuple | None = None,
-               contact_geometry: bool = False) -> str:
+               contact_geometry: bool = False, visual_meshes: str = "auto") -> str:
     """Return an MJCF string. wheel in {'torus','cylinder'}; mu = wheel-ground friction.
 
     solref = (timeconst, dampratio): contact compliance. Default (0.02, 1.0) is MuJoCo's stiff
@@ -83,6 +153,12 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
     # planar dynamics we certify.
     I_roll = max(I_yaw_chassis, abs(I_yaw_chassis - I_pitch) + 1e-3)
 
+    overlay = _visual_mesh_overlay() if visual_meshes == "auto" else None
+    # When meshes are active, primitive geoms move to display group 3 (hidden by
+    # default in viewer and Renderer) -- PURELY visual; contact and inertial
+    # behaviour is untouched, which test_visual_meshes_do_not_change_dynamics pins.
+    hide = ' group="3"' if overlay else ""
+
     if wheel == "torus":
         ext = ('<extension><plugin plugin="mujoco.sdf.torus">'
                f'<instance name="wsdf"><config key="radius1" value="{R}"/>'
@@ -91,14 +167,14 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
         asset = '<asset><mesh name="wmesh"><plugin instance="wsdf"/></mesh></asset>'
 
         def wheel_geom(name):
-            return (f'<geom name="{name}" type="sdf" mesh="wmesh" euler="90 0 0" '
+            return (f'<geom name="{name}" type="sdf" mesh="wmesh" euler="90 0 0"{hide} '
                     f'friction="{mu} 0.005 0.0001" condim="6" '
                     f'solref="{solref[0]} {solref[1]}" margin="{margin}"/>')
     elif wheel == "cylinder":
         ext = asset = ""
 
         def wheel_geom(name):
-            return (f'<geom name="{name}" type="cylinder" '
+            return (f'<geom name="{name}" type="cylinder"{hide} '
                     f'size="{R} {wheel_contact_half_width}" euler="90 0 0" '
                     f'friction="{mu} 0.005 0.0001" condim="6" '
                     f'solref="{solref[0]} {solref[1]}" margin="{margin}"/>')
@@ -125,7 +201,7 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
         )
     else:
         base_vis = (f'<geom type="box" size="0.06 {d} 0.06" pos="0 0 {h_cm}" '
-                    f'contype="0" conaffinity="0" rgba="0.4 0.5 0.8 0.4"/>')
+                    f'contype="0" conaffinity="0"{hide} rgba="0.4 0.5 0.8 0.4"/>')
         leg_geoms = ""
 
     imu_site = sensor_block = ""
@@ -137,12 +213,16 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
                         '<gyro name="gyr_imu" site="imu"/></sensor>')
 
     # Chassis frame origin AT the wheel axle; upright => axle at height R above ground.
+    overlay_asset = overlay["asset"] if overlay else ""
+    overlay_chassis = overlay["chassis"] if overlay else ""
+    overlay_right = overlay["right_wheel"] if overlay else ""
+    overlay_left = overlay["left_wheel"] if overlay else ""
     return f"""
 <mujoco model="wheeled_ip_{wheel}">
   <option timestep="0.001" integrator="implicitfast" cone="elliptic"/>
   <compiler angle="degree"/>
   {ext}
-  {asset}
+  {asset}{overlay_asset}
   <default>
     <joint damping="0.0"/>
     <motor ctrlrange="-{p['motor_torque_limit']} {p['motor_torque_limit']}"/>
@@ -154,16 +234,16 @@ def build_mjcf(wheel: str = "torus", mu: float = 1.0,
       <freejoint name="base"/>
       <!-- sprung body: CoM at h_cm above the axle -->
       <inertial pos="0 0 {h_cm}" mass="{m_b}" diaginertia="{I_roll} {I_pitch} {I_yaw_chassis}"/>
-      {base_vis}{leg_geoms}{imu_site}
+      {base_vis}{leg_geoms}{imu_site}{overlay_chassis}
       <body name="right_wheel" pos="0 {-d} 0">
         <joint name="rwheel" type="hinge" axis="0 1 0"/>
         <inertial pos="0 0 0" mass="{m_w}" diaginertia="{I_w_t} {I_w} {I_w_t}"/>
-        {wheel_geom("right_wheel_geom")}
+        {wheel_geom("right_wheel_geom")}{overlay_right}
       </body>
       <body name="left_wheel" pos="0 {d} 0">
         <joint name="lwheel" type="hinge" axis="0 1 0"/>
         <inertial pos="0 0 0" mass="{m_w}" diaginertia="{I_w_t} {I_w} {I_w_t}"/>
-        {wheel_geom("left_wheel_geom")}
+        {wheel_geom("left_wheel_geom")}{overlay_left}
       </body>
     </body>
   </worldbody>

@@ -314,3 +314,28 @@ def test_yaw_sign_convention() -> None:
     mirrored = np.asarray(model.f(np.zeros(4), np.array([-1.0, 1.0])), float)
     assert mirrored[3] > 0.0 and abs(mirrored[3] + differential[3]) < 1e-9, (
         "swapping the torque pair must mirror psi_ddot exactly")
+
+
+def test_visual_meshes_do_not_change_dynamics() -> None:
+    """The release-mesh overlay is visual only: bit-identical trajectories.
+
+    Meshes come from the PRIVATE sibling at runtime (contype=0, conaffinity=0,
+    group 2) and every body keeps its explicit <inertial>, so turning the overlay
+    on cannot move a single bit of the dynamics. Stepped, not argued: identical
+    controls for 500 steps, qpos/qvel compared exactly.
+    """
+    mujoco = pytest.importorskip("mujoco")
+    from vault.mujoco_model import build_mjcf
+
+    runs = []
+    for mode in ("auto", "off"):
+        m = mujoco.MjModel.from_xml_string(
+            build_mjcf(wheel="cylinder", visual_meshes=mode))
+        d = mujoco.MjData(m)
+        for k in range(500):
+            d.ctrl[:] = (0.4 * np.sin(0.01 * k), -0.3 * np.cos(0.013 * k))
+            mujoco.mj_step(m, d)
+        runs.append((d.qpos.copy(), d.qvel.copy()))
+    (q1, v1), (q2, v2) = runs
+    assert np.array_equal(q1, q2), "mesh overlay changed qpos -- it is not visual-only"
+    assert np.array_equal(v1, v2), "mesh overlay changed qvel -- it is not visual-only"
