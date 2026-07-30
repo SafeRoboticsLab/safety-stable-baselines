@@ -137,12 +137,30 @@ def _visual_mesh_overlay() -> dict | None:
         return R, t
 
     def quat(R):
-        w = np.sqrt(max(0.0, 1 + R[0, 0] + R[1, 1] + R[2, 2])) / 2
-        if w < 1e-9:
-            return "1 0 0 0"
-        x = (R[2, 1] - R[1, 2]) / (4 * w)
-        y = (R[0, 2] - R[2, 0]) / (4 * w)
-        z = (R[1, 0] - R[0, 1]) / (4 * w)
+        """Rotation matrix -> MJCF quaternion, valid for ALL rotations.
+
+        The naive w = sqrt(1+trace)/2 form divides by w, which is EXACTLY ZERO for
+        any rotation by pi -- i.e. for the tucked knee fold itself. An earlier
+        version short-circuited that case to the identity, which discarded the
+        fold's orientation while keeping its translation: every pi-rotated link
+        rendered unrotated at the correct position (feet looked right, lower legs
+        pointed the wrong way, and the kinematic chain appeared broken). Use the
+        standard largest-component branch instead, which is well-conditioned
+        everywhere.
+        """
+        tr = R[0, 0] + R[1, 1] + R[2, 2]
+        if tr > 0:
+            s = 2 * np.sqrt(1 + tr)
+            w, x, y, z = s / 4, (R[2, 1] - R[1, 2]) / s, (R[0, 2] - R[2, 0]) / s, (R[1, 0] - R[0, 1]) / s
+        elif R[0, 0] >= R[1, 1] and R[0, 0] >= R[2, 2]:
+            s = 2 * np.sqrt(max(1e-12, 1 + R[0, 0] - R[1, 1] - R[2, 2]))
+            w, x, y, z = (R[2, 1] - R[1, 2]) / s, s / 4, (R[0, 1] + R[1, 0]) / s, (R[0, 2] + R[2, 0]) / s
+        elif R[1, 1] >= R[2, 2]:
+            s = 2 * np.sqrt(max(1e-12, 1 + R[1, 1] - R[0, 0] - R[2, 2]))
+            w, x, y, z = (R[0, 2] - R[2, 0]) / s, (R[0, 1] + R[1, 0]) / s, s / 4, (R[1, 2] + R[2, 1]) / s
+        else:
+            s = 2 * np.sqrt(max(1e-12, 1 + R[2, 2] - R[0, 0] - R[1, 1]))
+            w, x, y, z = (R[1, 0] - R[0, 1]) / s, (R[0, 2] + R[2, 0]) / s, (R[1, 2] + R[2, 1]) / s, s / 4
         return f"{w:.8f} {x:.8f} {y:.8f} {z:.8f}"
 
     WHEELS = {"right_body_wheel_link": "right_wheel", "left_body_wheel_link": "left_wheel"}
