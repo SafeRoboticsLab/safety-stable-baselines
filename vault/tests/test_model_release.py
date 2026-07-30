@@ -423,3 +423,57 @@ def test_mesh_overlay_degrades_with_warning_on_malformed_assets(
     dae.write_text("<COLLADA/>")
     with pytest.raises(ValueError, match="unsupported mesh format"):
         _check_mesh_asset(dae)
+
+
+def test_checkpoint_allowlist_requires_a_written_justification(
+        tmp_path: Path) -> None:
+    """A later release may be allowlisted for a checkpoint, but only with a reason.
+
+    `lock_sha256` records what release a policy was TRAINED under and is never
+    restamped -- that would assert training against a bound the policy never saw.
+    When a release changes without touching the physics (added provenance, a new
+    scalar, a re-pinned generator), the checkpoint may name that release in
+    also_valid_under_lock_sha256 WITH a justification. A bare digest, an empty
+    reason, or a removed allowlist must still fail closed.
+    """
+    release = get_model_release()
+    manifest = json.loads(release.checkpoint_manifest_path.read_text())
+    entry = next(e for e in manifest["checkpoints"] if e.get("status") == "compatible")
+
+    # The live manifest must justify every release it allowlists, and must not have
+    # restamped training provenance to the current release.
+    allowlist = entry.get("also_valid_under_lock_sha256") or {}
+    assert entry["lock_sha256"] != release.lock_sha256, (
+        "training provenance was restamped to the current release -- it must record "
+        "the release the policy was actually trained under")
+    assert release.lock_sha256 in allowlist, (
+        "current release is neither the training release nor allowlisted")
+    for digest, reason in allowlist.items():
+        assert len(digest) == 64
+        assert isinstance(reason, str) and reason.strip(), f"{digest[:12]} lacks a reason"
+    # The physics hashes are the real gate and must be untouched by the allowlist.
+    assert entry["model_hashes"] == release.model_hashes
+
+    target = Path("vault/models/reach_avoid_safety_sac_v22.zip").resolve()
+    if not target.is_file():
+        pytest.skip("v2.2 reach-avoid checkpoint not present")
+    assert release.verify_checkpoint(target) == target
+
+    def _with_manifest(mutate) -> ModelRelease:
+        data = json.loads(release.checkpoint_manifest_path.read_text())
+        for item in data["checkpoints"]:
+            if item.get("status") == "compatible":
+                mutate(item)
+        path = tmp_path / "checkpoints_manifest.json"
+        path.write_text(json.dumps(data))
+        return ModelRelease(checkpoint_manifest=path)
+
+    for label, mutate in (
+        ("whitespace reason", lambda e: e.update(
+            also_valid_under_lock_sha256={LOCK_SHA256: "   "})),
+        ("bare digest, no reason", lambda e: e.update(
+            also_valid_under_lock_sha256={LOCK_SHA256: ""})),
+        ("allowlist removed", lambda e: e.pop("also_valid_under_lock_sha256", None)),
+    ):
+        with pytest.raises(ModelReleaseError, match="lock mismatch"):
+            _with_manifest(mutate).verify_checkpoint(target)

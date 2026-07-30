@@ -13,6 +13,9 @@
       "status": "incompatible"
     },
     {
+      "also_valid_under_lock_sha256": {
+        "a9595e99fd57e163af3e587c2f5ce6c9015dec2d42979771d80bf7cd5f6aeea5": "Release a9595e99 differs from the training release f5603068 in exactly three provenance keys and no physics: the ADDED file models/source/geometry/knee_wheel_geometry.json, the source manifest hash that now covers it, and the re-pinned generator commit (a39b85a1 -> 7e32bf93, which reproduced every release artifact byte-identically). composite_params_sha256 and opt6_kernel_sha256 are unchanged, so the dynamics this policy was trained against did not move by one bit. Evaluation-only status is unaffected and still applies."
+      },
       "artifact_sha256": "ba482bc2bf7161bdd4fa065e5ce2c232d9f084ce9c7b9c836437892c6e09fc7a",
       "lock_sha256": "f56030685ad79b16261abc7329448a78019b7f4748490f810699be5b03ca220a",
       "model_hashes": {

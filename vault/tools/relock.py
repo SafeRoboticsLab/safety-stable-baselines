@@ -105,8 +105,14 @@ def stale_provenance(lock_sha: str) -> list[str]:
             # carry no lock of their own and are not artifacts.
             if entry.get("status") != "compatible":
                 continue
-            if entry.get("lock_sha256") != lock_sha:
-                stale.append(f"checkpoint: {entry.get('pattern', '?')}")
+            if entry.get("lock_sha256") == lock_sha:
+                continue
+            # An explicitly justified allowlist entry is a reviewed judgement that
+            # this release did not move the physics -- not regeneration backlog.
+            allowed = entry.get("also_valid_under_lock_sha256") or {}
+            if isinstance(allowed.get(lock_sha), str) and allowed[lock_sha].strip():
+                continue
+            stale.append(f"checkpoint: {entry.get('pattern', '?')}")
     return stale
 
 

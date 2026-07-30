@@ -286,9 +286,25 @@ class ModelRelease:
                     entry.get("model_hashes"), self.checkpoint_manifest_path
                 )
                 if entry.get("lock_sha256") != self.lock_sha256:
-                    raise ModelReleaseError(
-                        f"checkpoint manifest lock mismatch for {path.name}"
+                    # `lock_sha256` records the release a policy was TRAINED under and
+                    # is never restamped -- restamping would assert a policy had been
+                    # trained against a bound it never saw. But a release can change
+                    # in ways that provably do not touch the physics a policy learned
+                    # (added provenance, a new scalar, a re-pinned generator commit),
+                    # and the model_hashes check above is what actually guards that.
+                    # So a checkpoint may carry an explicit allowlist of later releases
+                    # it remains valid under, each with a written justification. A bare
+                    # digest with no reason is refused: the reason is the review unit.
+                    reason = (entry.get("also_valid_under_lock_sha256") or {}).get(
+                        self.lock_sha256
                     )
+                    if not (isinstance(reason, str) and reason.strip()):
+                        raise ModelReleaseError(
+                            f"checkpoint manifest lock mismatch for {path.name}: "
+                            f"trained under {str(entry.get('lock_sha256'))[:12]}, "
+                            f"release is {self.lock_sha256[:12]} and carries no "
+                            "justified also_valid_under_lock_sha256 entry"
+                        )
                 expected = entry.get("artifact_sha256")
                 if not path.is_file() or _sha256(path) != expected:
                     raise ModelReleaseError(
