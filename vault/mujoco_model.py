@@ -59,9 +59,8 @@ def _visual_mesh_overlay() -> dict | None:
     from the private articulated URDF, so this PUBLIC file carries no dimensions.
 
     ALL mesh-bearing links are attached, not just chassis+wheels: leg linkages,
-    knee wheels and feet are posed by forward kinematics at the articulated URDF's
-    zero configuration (pure composition of joint origins -- no joint-angle source
-    is needed) and fixed to the chassis body, since the reduced plant has no leg
+    knee wheels and feet are posed by forward kinematics at the TUCKED display
+    configuration (knees at 180 deg, all else zero) and fixed to the chassis body, since the reduced plant has no leg
     joints. The two body-wheel meshes attach to the spinning wheel bodies.
 
     The overlay is VISUAL ONLY: contype=0 conaffinity=0, display group 2; every
@@ -97,13 +96,29 @@ def _visual_mesh_overlay() -> dict | None:
     def vec(s, n=3):
         return np.array([float(x) for x in (s or " ".join(["0"] * n)).split()])
 
-    # joint tree: child link -> (parent link, R, t) at ZERO configuration
+    # Tucked display configuration: knees at 180 deg (operator-provided joint
+    # constant, matching the retract lane's knee = 180deg hold). All other joints
+    # at zero. This is a VISUAL pose only.
+    TUCKED_Q = {"right_knee_joint": np.pi, "left_knee_joint": np.pi}
+
+    def axis_rot(axis, angle):
+        a = axis / (np.linalg.norm(axis) or 1.0)
+        K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
+        return np.eye(3) + np.sin(angle) * K + (1 - np.cos(angle)) * (K @ K)
+
+    # joint tree: child link -> (parent link, R, t) at the DISPLAY configuration
     parent_of: dict[str, tuple[str, np.ndarray, np.ndarray]] = {}
     for j in tree.iter("joint"):
         o = j.find("origin")
+        R_origin = rot(vec(o.get("rpy") if o is not None else None))
+        angle = TUCKED_Q.get(j.get("name"), 0.0)
+        if angle:
+            ax = j.find("axis")
+            R_origin = R_origin @ axis_rot(
+                vec(ax.get("xyz") if ax is not None else "1 0 0"), angle)
         parent_of[j.find("child").get("link")] = (
             j.find("parent").get("link"),
-            rot(vec(o.get("rpy") if o is not None else None)),
+            R_origin,
             vec(o.get("xyz") if o is not None else None),
         )
 
