@@ -1,6 +1,6 @@
 {
   "artifact_sha256": "2be83d700fad6b67c2c72b46f416763c8d8c5a34b2752002faf7cfdfeb8ca0f7",
-  "lock_sha256": "a9595e99fd57e163af3e587c2f5ce6c9015dec2d42979771d80bf7cd5f6aeea5",
+  "lock_sha256": "512fc77dcedf5daa16f0d9411ef7d69b0e357e69b709d5e9799ed2f664409b48",
   "model_hashes": {
     "composite_params_sha256": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
     "opt6_kernel_sha256": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
