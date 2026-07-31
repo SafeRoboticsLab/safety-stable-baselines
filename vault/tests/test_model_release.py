@@ -15,7 +15,7 @@ import pytest
 from vault.model_release import ModelRelease, ModelReleaseError, get_model_release
 
 
-LOCK_SHA256 = "512fc77dcedf5daa16f0d9411ef7d69b0e357e69b709d5e9799ed2f664409b48"
+LOCK_SHA256 = "e9ac4b9d49cf3c34e23b06de82eb34fcdd1e6d97db046e8d3680afdd6aeff9b6"
 COMPOSITE_SHA256 = "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9"
 KERNEL_SHA256 = "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
 
