@@ -160,6 +160,30 @@ class AbstractSAC(GammaAnnealMixin, SAC):
     lec = getattr(self, "log_ent_coef", None)   # None for a FIXED ent_coef
     self._init_log_ent_coef = None if lec is None else lec.detach().clone()
 
+  # --- logging over the DUMP WINDOW, not the last call ----------------------
+  # On the tensor path _dump_logs() fires every 50k env-steps, which at 1024
+  # envs is ~49 train() calls. ``Logger.record`` OVERWRITES ("if called many
+  # times, last value will be used"), so a per-train() record() reaches wandb as
+  # a 1-in-49 sample and ~96% of the window is discarded unseen. That is how
+  # E057 could go critic_loss 0.0014 -> 1.95e+07 inside a single window with
+  # only the endpoints visible.
+  #
+  # ``record_mean`` fixes the average. It does NOT fix an onset spike, which a
+  # 49-call mean dilutes -- hence the running MAX below, reset on dump.
+
+  def _record_window_max(self, key: str, value: float) -> None:
+    """Running max of ``value`` since the last dump, recorded under ``key``."""
+    store = getattr(self, "_win_max_store", None)
+    if store is None:
+      store = self._win_max_store = {}
+    cur = store.get(key)
+    store[key] = value if cur is None else max(cur, value)
+    self.logger.record(key, store[key])
+
+  def _reset_window_max(self) -> None:
+    """Start a fresh window. Called immediately after a dump."""
+    self._win_max_store = {}
+
   def _clamp_entropy_temps(self) -> None:
     """Clamp the learned entropy temperature into [min_alpha, max_alpha].
     Called after each entropy-coefficient optimizer step in train()."""
@@ -313,6 +337,7 @@ class AbstractSAC(GammaAnnealMixin, SAC):
       for k, v in (env.metrics() or {}).items():
         self.logger.record(f"env/{k}", float(v))
       self._dump_logs()
+      self._reset_window_max()   # the window just closed; start the next one
 
     callback.on_rollout_end()
     return RolloutReturn(num_collected_steps * env.num_envs,

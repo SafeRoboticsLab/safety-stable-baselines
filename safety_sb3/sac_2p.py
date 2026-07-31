@@ -466,11 +466,14 @@ class AbstractSAC2P(AbstractSAC):
 
     self._n_updates += gradient_steps
     self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
-    self.logger.record("train/critic_loss", np.mean(critic_losses))
+    # record_mean + window max -- see AbstractSAC._record_window_max.
+    self.logger.record_mean("train/critic_loss", np.mean(critic_losses))
     if ctrl_losses:
-      self.logger.record("train/ctrl_actor_loss", np.mean(ctrl_losses))
+      self.logger.record_mean("train/ctrl_actor_loss", np.mean(ctrl_losses))
     if dstb_losses:
-      self.logger.record("train/dstb_actor_loss", np.mean(dstb_losses))
+      self.logger.record_mean("train/dstb_actor_loss", np.mean(dstb_losses))
+    if critic_losses:
+      self._record_window_max("train/critic_loss_max", float(max(critic_losses)))
     # Per-actor entropy temperature (alpha) + gamma; ctrl_ent/dstb_ent hold the
     # last step's values.
     self.logger.record("train/ent_coef_ctrl", float(ctrl_ent.mean()))
