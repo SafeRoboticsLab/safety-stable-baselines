@@ -160,6 +160,35 @@ class AbstractSAC(GammaAnnealMixin, SAC):
     lec = getattr(self, "log_ent_coef", None)   # None for a FIXED ent_coef
     self._init_log_ent_coef = None if lec is None else lec.detach().clone()
 
+  @staticmethod
+  def _polyak(params, target_params, tau: float) -> None:
+    """Soft target update as ONE fused foreach op instead of a Python loop.
+
+    SB3's ``polyak_update`` iterates in Python and issues two kernels per tensor
+    (``mul_`` then ``add``), so a 6-layer twin critic costs ~56 launches every
+    target update. The foreach ops below do the identical arithmetic in two
+    multi-tensor launches regardless of parameter count.
+
+    BITWISE-IDENTICAL, deliberately. ``_foreach_lerp_`` would be one launch
+    instead of two and is algebraically the same
+    (``t + tau*(p-t)`` == ``t*(1-tau) + p*tau``), but it reorders the float32
+    arithmetic -- measured drift 4.8e-07 absolute / 6.6e-05 relative per update
+    at tau=0.01. Keeping SB3's mul-then-add order costs one extra launch and
+    buys exact equality with every checkpoint we have already validated, which
+    matters on the certificate path where the whole artifact is a learned
+    level set.
+
+    This is worth doing because the update is launch-bound, not compute-bound
+    (measured: t_grad flat from batch 512 to 16384), and because a Python loop
+    over parameters is hostile to CUDA-graph capture.
+    """
+    tl = list(target_params)
+    if not tl:                     # e.g. batch_norm_stats on a net without BN
+      return
+    with th.no_grad():
+      th._foreach_mul_(tl, 1.0 - tau)
+      th._foreach_add_(tl, list(params), alpha=tau)
+
   # --- logging over the DUMP WINDOW, not the last call ----------------------
   # On the tensor path _dump_logs() fires every 50k env-steps, which at 1024
   # envs is ~49 train() calls. ``Logger.record`` OVERWRITES ("if called many

@@ -387,7 +387,12 @@ class AbstractSAC2P(AbstractSAC):
       opts.append(self.dstb_ent_coef_optimizer)
     self._update_learning_rate(opts)
 
-    ctrl_losses, dstb_losses, critic_losses = [], [], []
+    # Accumulate on device; one sync per train(). See AbstractSAC1P.train for
+    # the measurement and why this is a prerequisite for CUDA-graph capture.
+    _z = th.zeros((), device=self.device)
+    critic_loss_sum, ctrl_loss_sum, dstb_loss_sum = _z.clone(), _z.clone(), _z.clone()
+    critic_loss_max = th.full((), -float("inf"), device=self.device)
+    n_critic = n_ctrl = n_dstb = 0
     for step in range(gradient_steps):
       rd = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)
 
@@ -425,7 +430,10 @@ class AbstractSAC2P(AbstractSAC):
 
       current_q = self.critic(rd.observations, rd.actions)
       critic_loss = 0.5 * sum(F.mse_loss(cq, target_q) for cq in current_q)
-      critic_losses.append(critic_loss.item())
+      _cl = critic_loss.detach()
+      critic_loss_sum += _cl
+      critic_loss_max = th.maximum(critic_loss_max, _cl)
+      n_critic += 1
       self.critic.optimizer.zero_grad()
       critic_loss.backward()
       self.critic.optimizer.step()
@@ -439,7 +447,7 @@ class AbstractSAC2P(AbstractSAC):
         )
         min_q, _ = th.min(q_pi, dim=1, keepdim=True)
         ctrl_loss = (ctrl_ent * ctrl_logp - min_q).mean()
-        ctrl_losses.append(ctrl_loss.item())
+        ctrl_loss_sum += ctrl_loss.detach(); n_ctrl += 1
         self.actor.optimizer.zero_grad()
         ctrl_loss.backward()
         self.actor.optimizer.step()
@@ -453,27 +461,27 @@ class AbstractSAC2P(AbstractSAC):
         )
         min_q, _ = th.min(q_pi, dim=1, keepdim=True)
         dstb_loss = (dstb_ent * dstb_logp + min_q).mean()
-        dstb_losses.append(dstb_loss.item())
+        dstb_loss_sum += dstb_loss.detach(); n_dstb += 1
         self.dstb_actor.optimizer.zero_grad()
         dstb_loss.backward()
         self.dstb_actor.optimizer.step()
 
       if step % self.target_update_interval == 0:
-        polyak_update(
+        self._polyak(
           self.critic.parameters(), self.critic_target.parameters(), self.tau
         )
-        polyak_update(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
+        self._polyak(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
 
     self._n_updates += gradient_steps
     self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
     # record_mean + window max -- see AbstractSAC._record_window_max.
-    self.logger.record_mean("train/critic_loss", np.mean(critic_losses))
-    if ctrl_losses:
-      self.logger.record_mean("train/ctrl_actor_loss", np.mean(ctrl_losses))
-    if dstb_losses:
-      self.logger.record_mean("train/dstb_actor_loss", np.mean(dstb_losses))
-    if critic_losses:
-      self._record_window_max("train/critic_loss_max", float(max(critic_losses)))
+    if n_critic:
+      self.logger.record_mean("train/critic_loss", (critic_loss_sum / n_critic).item())
+      self._record_window_max("train/critic_loss_max", critic_loss_max.item())
+    if n_ctrl:
+      self.logger.record_mean("train/ctrl_actor_loss", (ctrl_loss_sum / n_ctrl).item())
+    if n_dstb:
+      self.logger.record_mean("train/dstb_actor_loss", (dstb_loss_sum / n_dstb).item())
     # Per-actor entropy temperature (alpha) + gamma; ctrl_ent/dstb_ent hold the
     # last step's values.
     self.logger.record("train/ent_coef_ctrl", float(ctrl_ent.mean()))

@@ -18,7 +18,7 @@ reach-avoid path. One shared body makes that unrepresentable.
 """
 from __future__ import annotations
 
-import numpy as np
+
 import torch as th
 import torch.nn.functional as F
 from stable_baselines3.common.utils import polyak_update
@@ -45,8 +45,19 @@ class AbstractSAC1P(AbstractSAC):
     # Update learning rate according to lr schedule
     self._update_learning_rate(optimizers)
 
-    ent_coef_losses, ent_coefs = [], []
-    actor_losses, critic_losses = [], []
+    # Logging scalars accumulate ON DEVICE; one sync per train() call, not four
+    # per gradient step. Each `.item()` drains the CUDA queue and blocks the CPU
+    # while Python re-queues the next update's ~300 kernel launches -- measured:
+    # t_grad is FLAT from batch 512 to 16384 (11.47 -> 14.20 ms), the textbook
+    # launch-bound signature, and at gradient_steps=64 the loop was paying 256
+    # stalls per collect cycle. It is also a HARD PREREQUISITE for CUDA-graph
+    # capture: `.item()` is a capture error.
+    _z = th.zeros((), device=self.device)
+    _ninf = th.full((), -float("inf"), device=self.device)
+    ent_coef_loss_sum, ent_coef_sum = _z.clone(), _z.clone()
+    actor_loss_sum, critic_loss_sum = _z.clone(), _z.clone()
+    critic_loss_max, ent_coef_max = _ninf.clone(), _ninf.clone()
+    n_ent_coef_loss = 0
 
     for gradient_step in range(gradient_steps):
       # Sample replay buffer
@@ -68,11 +79,16 @@ class AbstractSAC1P(AbstractSAC):
         ent_coef = th.exp(self.log_ent_coef.detach())
         ent_coef_loss = -(self.log_ent_coef *
                           (log_prob + self.target_entropy).detach()).mean()
-        ent_coef_losses.append(ent_coef_loss.item())
+        ent_coef_loss_sum += ent_coef_loss.detach()
+        n_ent_coef_loss += 1
       else:
         ent_coef = self.ent_coef_tensor
 
-      ent_coefs.append(ent_coef.item())
+      # ent_coef is shape [1] (log_ent_coef is a 1-element parameter); reduce
+      # it so the accumulators stay 0-d.
+      _ec = ent_coef.detach().mean()
+      ent_coef_sum += _ec
+      ent_coef_max = th.maximum(ent_coef_max, _ec)
 
       # Optimize entropy coefficient
       if ent_coef_loss is not None and self.ent_coef_optimizer is not None:
@@ -105,7 +121,9 @@ class AbstractSAC1P(AbstractSAC):
         F.mse_loss(current_q, target_q_values) for current_q in current_q_values
       )
       assert isinstance(critic_loss, th.Tensor)  # for type checker
-      critic_losses.append(critic_loss.item())  # type: ignore[union-attr]
+      _cl = critic_loss.detach()  # type: ignore[union-attr]
+      critic_loss_sum += _cl
+      critic_loss_max = th.maximum(critic_loss_max, _cl)
 
       # Optimize the critic
       self.critic.optimizer.zero_grad()
@@ -118,7 +136,7 @@ class AbstractSAC1P(AbstractSAC):
       q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
       min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
       actor_loss = (ent_coef*log_prob - min_qf_pi).mean()
-      actor_losses.append(actor_loss.item())
+      actor_loss_sum += actor_loss.detach()
 
       # Optimize the actor
       self.actor.optimizer.zero_grad()
@@ -127,24 +145,26 @@ class AbstractSAC1P(AbstractSAC):
 
       # Update target networks
       if gradient_step % self.target_update_interval == 0:
-        polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
-        # Copy running stats, see GH issue #996
-        polyak_update(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
+        self._polyak(self.critic.parameters(), self.critic_target.parameters(), self.tau)
+        # Copy running stats, see GH issue #996 (tau=1.0 == a copy)
+        self._polyak(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
 
     self._n_updates += gradient_steps
 
     self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
     # record_mean, not record -- see AbstractSAC._record_window_max: the dump
     # cadence is ~49 train() calls, and record() keeps only the last of them.
-    self.logger.record_mean("train/ent_coef", np.mean(ent_coefs))
-    self.logger.record_mean("train/actor_loss", np.mean(actor_losses))
-    self.logger.record_mean("train/critic_loss", np.mean(critic_losses))
-    if len(ent_coef_losses) > 0:
-      self.logger.record_mean("train/ent_coef_loss", np.mean(ent_coef_losses))
+    n = max(gradient_steps, 1)
+    self.logger.record_mean("train/ent_coef", (ent_coef_sum / n).item())
+    self.logger.record_mean("train/actor_loss", (actor_loss_sum / n).item())
+    self.logger.record_mean("train/critic_loss", (critic_loss_sum / n).item())
+    if n_ent_coef_loss:
+      self.logger.record_mean("train/ent_coef_loss",
+                              (ent_coef_loss_sum / n_ent_coef_loss).item())
     # Onset detectors: a mean over the window hides a spike that starts inside
     # it. These two are the pair that moved first in the E057 divergence.
-    self._record_window_max("train/critic_loss_max", float(max(critic_losses)))
-    self._record_window_max("train/ent_coef_max", float(max(ent_coefs)))
+    self._record_window_max("train/critic_loss_max", critic_loss_max.item())
+    self._record_window_max("train/ent_coef_max", ent_coef_max.item())
 
 
 # ----------------------------------------------------------------- the modes
