@@ -11,14 +11,20 @@ has its own entropy coefficient / target entropy (ctrl: ``-ctrl_dim``, dstb:
 ``-dstb_dim``). Uses :class:`~safety_sb3.policies.TwoPlayerSACPolicy` (two
 sub-space actors + one full critic).
 
-Soft max-min value used in the critic target::
+PURE Hamilton-Jacobi value in the critic target — NO entropy::
 
-    V'  = min(Q1', Q2')  - α_ctrl·logπ_ctrl(s')  + α_dstb·logπ_dstb(s')
+    V'  = min(Q1', Q2')                          (no soft term)
     y   = backups.target(mode, g, V', ...)       (avoid | reach-avoid)
 
-(The ctrl entropy raises the value as a max-player bonus; the dstb entropy raises
-the min as a min-player softening — same convention as the single-player learner
-adding ctrl entropy to ``next_q``.)
+The per-actor temperatures α_ctrl, α_dstb appear ONLY in the ctrl/dstb actor
+losses (exploration; annealed away over training), never in the critic target.
+This is ISAACS eq. 8a exactly (Hsu et al. 2023, ``entropy_motives=0``), and it is
+what both reference codebases do (base_block.py adds entropy to the target only
+``if self.mode == 'performance'``). A soft term in the target would tax the game
+value whose zero level set is the online safety certificate, warping {V>=0}.
+(An earlier version of this file put ``- α_ctrl·logπ_ctrl + α_dstb·logπ_dstb`` in
+V' and mislabelled it "as ISAACS formulates it"; that was a port error, now
+corrected — see the note at the target computation.)
 
 **This is the minimax game as ISAACS formulates it**, and it is NOT the same
 object as :mod:`safety_sb3.ppo_2p` even though both hold two actors. Because
@@ -412,18 +418,22 @@ class AbstractSAC2P(AbstractSAC):
 
       # --- critic update (soft max-min next value) ---
       with th.no_grad():
-        next_ctrl, next_ctrl_logp = self.actor.action_log_prob(rd.next_observations)
-        next_dstb, next_dstb_logp = self.dstb_actor.action_log_prob(
-          rd.next_observations
-        )
+        # log-probs of the next actions are intentionally discarded: entropy is
+        # not in the safety critic target (see the pure-HJ backup below).
+        next_ctrl, _ = self.actor.action_log_prob(rd.next_observations)
+        next_dstb, _ = self.dstb_actor.action_log_prob(rd.next_observations)
         next_action = th.cat([next_ctrl, next_dstb], dim=1)
         next_q = th.cat(self.critic_target(rd.next_observations, next_action), dim=1)
         next_q, _ = th.min(next_q, dim=1, keepdim=True)
-        next_q = (
-          next_q
-          - ctrl_ent * next_ctrl_logp.reshape(-1, 1)
-          + dstb_ent * next_dstb_logp.reshape(-1, 1)
-        )
+        # PURE Isaacs/HJ backup -- NO entropy in the critic target. ISAACS
+        # (Hsu et al. 2023) passes entropy_motives=0 for the safety value
+        # (eq. 8a: y = (1-g)g' + g*min{g', Q'}); the per-actor temperatures live
+        # ONLY in the ctrl/dstb ACTOR losses below (eq. 8b). AbstractSAC2P is
+        # never CUMULATIVE (there is no two-player cumulative game -- see the MAP
+        # law in registry.algo_name), so the soft term is dropped
+        # unconditionally, not gated. The previous
+        # `- ctrl_ent*logp + dstb_ent*logp` taxed the game value whose zero
+        # level set is the online safety certificate.
         # Backup for THIS learner's mode -- see safety_sb3.backups.
         # ReachAvoidSAC2P -> reach-avoid (eq. 6a); SafetySAC2P -> avoid (eq. 7).
         target_q = self._bellman_target(rd, next_q)

@@ -107,8 +107,23 @@ class AbstractSAC1P(AbstractSAC):
           self.critic_target(replay_data.next_observations, next_actions), dim=1
         )
         next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-        # add entropy term
-        next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
+        # SOFT next-state value -- ONLY for the cumulative backup.
+        #
+        # For the AVOID / REACH_AVOID (Hamilton-Jacobi) backups the critic target
+        # is the PURE Isaacs/HJ backup: ISAACS (Hsu et al. 2023) eq. 8a is
+        #     y = (1-g) g' + g * min{g', Q(x',u',d')}
+        # with NO -alpha*log pi in the bootstrap; entropy is confined to the
+        # actor loss (eq. 8b), where it is an annealed exploration regulariser.
+        # Both reference codebases gate identically -- base_block.py adds the
+        # entropy term only `if self.mode == 'performance'` (== our CUMULATIVE),
+        # and ISAACS passes entropy_motives=0. A soft term inside the min/max
+        # taxes the value whose ZERO LEVEL SET is the safety certificate,
+        # warping {V>=0} (optimistically at the boundary) and voiding the RSS'21
+        # under-approximation guarantee. This library previously subtracted it
+        # for ALL modes -- a port error, contradicting this file's own
+        # "matches safe_adaptation_dev" docstring.
+        if self._MODE == backups.CUMULATIVE:
+          next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
 
         target_q_values = self._bellman_target(replay_data, next_q_values)
 

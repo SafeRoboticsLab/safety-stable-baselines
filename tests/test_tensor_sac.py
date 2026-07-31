@@ -21,7 +21,8 @@ from gymnasium import spaces
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from safety_sb3 import ReachAvoidSAC1P, SafetySAC1P  # noqa: E402
+from safety_sb3 import (  # noqa: E402
+  CumulativeSAC1P, ReachAvoidSAC1P, SafetySAC1P)
 from safety_sb3.tensor_env import TensorVecEnv  # noqa: E402
 from safety_sb3.tensor_replay import TensorReplayBuffer  # noqa: E402
 
@@ -174,6 +175,61 @@ def test_reach_avoid_sac_learns():
           f"actor (torch-init variance); value structure verified above.")
 
 
+def test_entropy_absent_from_safety_target():
+  """The SAFETY critic target must be INVARIANT to the entropy temperature.
+
+  The regression that would have caught entropy leaking into the HJ backup.
+  ISAACS (Hsu et al. 2023) eq. 8a has no ``-alpha*log pi`` in the critic target
+  (``entropy_motives=0``); entropy lives only in the actor loss (eq. 8b). So the
+  AVOID / REACH_AVOID target must not move when alpha changes, while the
+  CUMULATIVE (ordinary SAC) target must. Captures the ACTUAL next-state value
+  train() feeds into ``_bellman_target`` at two very different alphas, holding
+  the batch and the weights fixed."""
+  import copy
+  import math
+
+  for algo, mode_sensitive in ((SafetySAC1P, False),
+                               (ReachAvoidSAC1P, False),
+                               (CumulativeSAC1P, True)):
+    env = DoubleIntegratorEnv()
+    model = algo(
+      "MlpPolicy", env, buffer_size=20_000, batch_size=256, learning_starts=0,
+      train_freq=1, gradient_steps=1, gamma=0.95, ent_coef="auto",
+      gamma_anneal=False, policy_kwargs=dict(net_arch=[64, 64]), seed=0,
+      device=DEV, verbose=0)
+    model.learn(total_timesteps=2_000, log_interval=None)  # real weights + data
+
+    captured: dict = {}
+    orig = model._bellman_target
+    model._bellman_target = (
+      lambda batch, next_q, _o=orig: (
+        captured.__setitem__("nq", next_q.detach().clone()) or _o(batch, next_q)))
+
+    snap = copy.deepcopy(model.policy.state_dict())
+
+    def next_q_at(log_alpha):
+      model.policy.load_state_dict(snap)          # identical weights each call
+      with th.no_grad():
+        model.log_ent_coef.fill_(log_alpha)
+      th.manual_seed(12345)                        # identical batch + actor sample
+      model.train(gradient_steps=1, batch_size=256)
+      return captured["nq"]
+
+    diff = float((next_q_at(math.log(1e-8)) - next_q_at(math.log(10.0)))
+                 .abs().max())
+    if mode_sensitive:
+      assert diff > 0.5, (
+        f"{algo.__name__}: CUMULATIVE target should move with alpha (soft "
+        f"value), max|d next_q| = {diff:.2e}")
+      print(f"[ok] {algo.__name__}: alpha-sensitive target, |d next_q|={diff:.2e}")
+    else:
+      assert diff < 1e-6, (
+        f"{algo.__name__}: SAFETY target MUST be alpha-invariant (no entropy in "
+        f"the HJ backup, ISAACS eq. 8a), but max|d next_q| = {diff:.2e} -- "
+        f"entropy is leaking into the certificate value")
+      print(f"[ok] {algo.__name__}: alpha-INVARIANT target, |d next_q|={diff:.2e}")
+
+
 class TwoPlayerDoubleIntegratorEnv(TensorVecEnv):
   """Two-player double integrator: ctrl pushes, a bounded dstb perturbs.
 
@@ -274,6 +330,7 @@ if __name__ == "__main__":
   test_buffer_semantics()
   test_safety_sac_learns()
   test_reach_avoid_sac_learns()
+  test_entropy_absent_from_safety_target()
   test_reach_avoid_sac_2p_tensor_learns()
   test_safety_sac_2p_tensor_learns()
   print("ALL TENSOR-SAC TESTS PASSED")
