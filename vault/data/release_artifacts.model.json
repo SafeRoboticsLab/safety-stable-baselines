@@ -15,7 +15,7 @@
     "v_mlp_unladen_json": "models/generated/safety/mlp/v_mlp_unladen.json",
     "v_mlp_unladen_pt": "models/generated/safety/mlp/v_mlp_unladen.pt"
   },
-  "lock_sha256": "e9ac4b9d49cf3c34e23b06de82eb34fcdd1e6d97db046e8d3680afdd6aeff9b6",
+  "lock_sha256": "05ce740da53925f3fabd51ee3fe2dbb93fe057e3e0337af17cb9d0aa4371f992",
   "model_hashes": {
     "composite_params_sha256": "ff1cb3ea82565cfff9d8454d277e8bc4d63d467fcf5c6b5c36ddf372b7c2f5a9",
     "opt6_kernel_sha256": "5b2aa6e4d2b337c45de8f57282c83f01266e0e2adaa19ebe08b0dc2074bc40c9"
