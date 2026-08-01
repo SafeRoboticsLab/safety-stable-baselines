@@ -122,7 +122,7 @@ task, remove the deaths," try `SafetyPPO1P` fine-tuning before anything fancier.
 
 ## 5. Filters (deployment)
 
-**Value-based shielding:** run the nominal; switch to the safety policy when the
+**Value-based filtering:** run the nominal; switch to the safety policy when the
 safety value of the current state (or the nominal's proposed next state) drops
 below a threshold. Two things matter in practice:
 

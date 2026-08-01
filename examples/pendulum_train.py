@@ -4,7 +4,7 @@ Adversarial disturbance test on Pendulum-v1 (safety-only).
 - Train SafetySAC1P where env reward = safety margin g(s).
 - Start eval from upright (theta=0).
 - Apply an adversarial torque that pushes the pendulum away from upright.
-- Compare unshielded vs shielded rollouts and save GIFs.
+- Compare unfiltered vs filtered rollouts and save GIFs.
 """
 
 import os, sys

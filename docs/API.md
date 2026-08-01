@@ -22,23 +22,23 @@ level set — the safety boundary — moves.
 | channel | symbol | meaning | where |
 |---|---|---|---|
 | reward | `g(s)` | **safety margin**. `g ≥ 0` ⟺ outside the failure set. | the reward field |
-| info | `l(s)` | **target margin**. `l ≥ 0` ⟺ inside the target set. Reach-avoid only. | `info["l_x"]` (numpy) / `step_tensor`'s 5th return (tensor) |
-| dones | | terminate when `g < 0`; timeouts are never value-bootstrapped by default | standard gym |
+| info | `l(s)` | **target margin**. `l ≥ 0` ⟺ inside the target set. Reach-avoid only. | `info["l_x"]` (NumPy) / `step_tensor`'s 5th return (tensor) |
+| dones | | terminate when `g < 0`; timeouts are never value-bootstrapped by default | standard Gym |
 
-Rules, each of which has cost real debugging (see BEST_PRACTICES):
+Rules, each of which has caused real debugging headaches (see [Best practices](best-practices.md)):
 
 - **Never normalize the reward.** `g` *is* the margin. `VecNormalize(norm_reward=True)`
   or any reward scaler silently destroys the backup. Observation normalization is fine.
 - **Terminate on `g < 0`.** Letting the sim run past a violation leaks post-failure
   states into the value target.
-- **`l` is read only by the `ReachAvoid*` learners.** The `Safety*` learners do not
-  ignore it — they have nowhere to put it. Their buffers carry no `l` column at all,
+- **`l` is used only by the `ReachAvoid*` learners.** The `Safety*` learners do not
+  use it — they have nowhere to put it. Their buffers carry no `l` column at all,
   which is a structural guarantee rather than a convention. An avoid task should not
   invent one — see §5.
 
-### Numpy path vs tensor path
+### NumPy path vs tensor path
 
-- **Numpy path** (standard SB3 `VecEnv`): `g` on `reward`, `l` on `info["l_x"]`.
+- **NumPy path** (standard SB3 `VecEnv`): `g` on `reward`, `l` on `info["l_x"]`.
   Used by the SAC family and by PPO on CPU envs.
 - **Tensor path** (`TensorVecEnv`, GPU-resident): the env implements
   `step_tensor(actions) -> (obs, reward_g, dones, timeouts, l_x)`, all device tensors.
@@ -47,9 +47,9 @@ Rules, each of which has cost real debugging (see BEST_PRACTICES):
 
 ---
 
-## 2. The learners — here's a MAP
+## 2. The learners — here's the MAP
 
-**Here's a MAP to navigate the codebase — Mode. Algorithm. Players.**
+**Here's the MAP to navigate the codebase — Mode. Algorithm. Players.**
 
 ```
 M = Mode       Safety | ReachAvoid | Cumulative    (which Bellman operator)
@@ -69,7 +69,7 @@ A class name is those three axes in that order, so the roster is the product:
 Pick the **Mode** by your problem (does the task have a target to reach? is it a
 safety problem at all?) and the **Players** by whether you train against a worst-case
 disturbance adversary. The Algorithm axis is the ordinary RL choice — on-policy and
-large `n_envs` favour PPO; sample efficiency favours SAC.
+large `n_envs` favor PPO; sample efficiency favors SAC.
 
 **DQN has no `ReachAvoid` variant.** MAP would predict one; this is the single place
 the product does not close. SB3's discrete-action `ReplayBuffer` carries no `l(s)`, so
@@ -147,7 +147,7 @@ target = nt · ( (1 − γ)·anchor + γ·backup ) + (1 − nt)·terminal
 **Do not anchor reach-avoid on `g`.** That makes "stay safe forever, never reach"
 a fixed point at `V = g > 0` — a win — when its true value is `maxₜ lₜ < 0`. The
 result is neither problem's value, RSS'21's under-approximation theorem stops
-applying, and the critic is unsound to shield with. This was the v0.1.0 bug.
+applying, and the critic is unsound to filter with. This was the v0.1.0 bug.
 
 ### The third mode: `cumulative` (ordinary RL)
 
@@ -172,7 +172,7 @@ backups.MODES, backups.SAFETY_MODES         # all three / the two safety ones
 backups.check_mode(s), backups.check_terminal_type(s)
 ```
 
-All are elementwise and accept numpy arrays or torch tensors interchangeably.
+All are elementwise and accept NumPy arrays or PyTorch tensors interchangeably.
 
 ---
 
@@ -183,7 +183,7 @@ How a **terminal** step is valued (the non-terminal blend is unaffected):
 | `terminal_type` | terminal target | meaning |
 |---|---|---|
 | `"all"` (default) | `min(l, g)` | the reach-avoid horizon condition (`V_H`, eq. 5b) |
-| `"g"` | `g` | the avoid terminal; also offered by the reference impl |
+| `"g"` | `g` | the avoid terminal; also offered by the reference implementation |
 
 It is a **first-class constructor kwarg** on every reach-avoid learner and is
 ignored (harmlessly) by the avoid learners:
@@ -278,7 +278,7 @@ reference ISAACS codebase):
   cost scales with `n_eval_episodes × pairings × episode_len × (1/freq)` and can
   dominate wall-clock (~97% at 1024 envs with the old 100k-freq / 10-episode
   settings). Pass a **`TensorVecEnv`** leaderboard eval env (dispatches to the
-  on-device `_eval_pair_tensor` — no numpy VecEnv, no per-step host↔device sync)
+  on-device `_eval_pair_tensor` — no NumPy VecEnv, no per-step host↔device sync)
   and prefer a **high `leaderboard_freq`** (e.g. 2M) with **few `n_eval_episodes`**
   (e.g. 3) — the league is a relative ranking. This was a ~30× throughput lever at
   1024 envs (≈500 → ≈19k FPS).
@@ -315,7 +315,7 @@ model = ReachAvoidPPO1P("MlpPolicy", tensor_env, normalize_obs=True,
                       terminal_type="all", n_steps=48, batch_size=24576)
 model.learn(2_000_000_000)
 
-# two-player avoid (ISAACS), numpy path
+# two-player avoid (ISAACS), NumPy path
 from safety_sb3 import SafetyPPO2P
 model = SafetyPPO2P("MlpPolicy", adv_env, ctrl_action_dim=2)   # no l, no terminal_type
 model.learn(5_000_000)

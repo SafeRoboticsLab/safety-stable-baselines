@@ -1,21 +1,21 @@
 # Bicycle5D — drive to a goal, avoid obstacles
 
-A 5-D kinematic bicycle (Princeton race car) in a plane of circular obstacles
-with a circular goal. Small, numpy-only, and **CPU-trainable to convergence in
+A planar car with bicycle-model dynamics, circular obstacles, and a goal.
+Small, NumPy-only, and **CPU-trainable to convergence in
 minutes** — the library's reference validation env.
 
-It's built to make the difference between the two problems *visible*:
+Use this environment to quickly check your installation, get started with the codebase,
+and observe the difference between two modes of safety training:
 
-- **avoid** (`SafetySAC` / `SafetyPPO`): nothing rewards motion, and `g > 0` is
-  already satisfied where the car starts — so the optimal policy is to **sit
-  still** (and only swerve if something approaches). The negative control.
+- **avoid** (`SafetySAC` / `SafetyPPO`): learn to avoid collisions without a goal-reaching incentive (always safe).
+  <!-- and `g > 0` is already satisfied where the car starts — so the optimal policy is to **sit still** (and only swerve if something approaches). The negative control. -->
 - **reach-avoid** (`ReachAvoidSAC` / `ReachAvoidPPO`): drive to the goal from
-  anywhere on the map without hitting an obstacle.
+  anywhere on the map without hitting an obstacle (always remain safe and eventually reach the goal).
 
-`reach_rate(reach-avoid) ≫ reach_rate(avoid)` is the whole assertion — and it is
+<!-- `reach_rate(reach-avoid) ≫ reach_rate(avoid)` is the whole assertion — and it is
 exactly what a wrong reach-avoid anchor fails (a `g`-anchored backup values
 sitting still at `V = g > 0`, so its "reach-avoid" car sits still too). See
-[RELEASE_NOTES](../release-notes.md).
+[RELEASE_NOTES](../release-notes.md). -->
 
 `import safety_sb3.testing.bicycle5d` — `BicycleGoal` (single-env gym) and
 `BicycleGoalVec` (batched, ~50k steps/s on CPU).
@@ -34,14 +34,14 @@ still.
 
 ![reach-avoid rollout](assets/nominal_sac.gif){ width="480" }
 
-**avoid — cars stay put (the control)**
+**avoid — cars stay put / away from the obstacles**
 
 ![avoid rollout](assets/nominal_avoid_sac.gif){ width="480" }
 
 </div>
 
-**Coverage:** `ReachAvoidSAC` 100%, `ReachAvoidPPO` 97% (from standstill, over the
-32 eval cars); avoid 0%.
+<!-- **Coverage:** `ReachAvoidSAC` 100%, `ReachAvoidPPO` 97% (from standstill, over the
+32 eval cars); avoid 0%. -->
 
 ### The learned value function `V(x, y)`
 
@@ -60,7 +60,7 @@ HJ-reachability work uses the SAC family for certificates: `V(s) = minᵢ Qᵢ(s
 
 ## The contract
 
-### Observation — `4 + 2 + 3·n_obstacles` (12 for the 2 default obstacles)
+### Observation — `4 + 2 + 3·n_obstacles` (12 for the two default obstacles)
 
 All in the car's **body frame** (translation-invariant, so the policy
 generalizes across the map):
@@ -71,7 +71,7 @@ generalizes across the map):
 | `sin ψ`, `cos ψ` | heading |
 | `δ` | steering angle |
 | `goal_x`, `goal_y` | goal position relative to the car |
-| per obstacle × n | `(x, y` relative, `radius)` |
+| each of `n` obstacles | relative position `(x, y)` and `radius` |
 
 ### Action — `2` (or `7` with `adversary=True`)
 
@@ -81,15 +81,15 @@ generalizes across the map):
 | `omega` (steering **rate**) | `[−2, 2]` |
 | (adversary) `d[0:5]` | additive disturbance on all 5 state derivatives |
 
-State `[x, y, v, ψ, δ]`, `v ∈ [0, 2]` (**can stop, can't reverse** — `v_min = 0`
-is load-bearing: the avoid car must be *able* to sit still), `δ ∈ [±0.35]`, min
+State `[x, y, v, ψ, δ]`, `v ∈ [0, 2]` (**can stop, cannot reverse** — `v_min = 0`
+is load-bearing: the avoid car must be *able* to sit still), `δ ∈ [±0.35]`, minimum
 turning radius 0.70 m. RK4 integration.
 
 ### Margins (`g` on reward, `l` on `info["l_x"]`)
 
 - **`g`** = signed distance from the car's rectangular footprint to the nearest
   obstacle circle, normalized, clamped `±3`. `g ≥ 0` ⟺ not in collision.
-- **`l`** = target margin, piecewise: `+GOAL_VALUE` (0.3) at the goal centre → 0
+- **`l`** = target margin, piecewise: `+GOAL_VALUE` (0.3) at the goal center → 0
   at the boundary → gentle negative outside. `l ≥ 0` ⟺ in the goal. The
   piecewise shape gives the value real positive range while keeping a reach
   gradient far out (a single linear scale can't do both).
@@ -108,7 +108,7 @@ model = ReachAvoidSAC("MlpPolicy", env, buffer_size=500_000, learning_starts=500
 model.learn(2_000_000)                        # ~100% coverage
 ```
 
-The avoid control is the same with `SafetySAC` (no `l` used). The full demo —
+The avoid setup is the same with `SafetySAC` (no `l` is used). The full demo —
 multi-car GIFs, value maps, and the PPO/SAC comparison — is
 [`examples/bicycle5d_demo.py`](https://github.com/SafeRoboticsLab/safety-stable-baselines/blob/main/examples/bicycle5d_demo.py)
 and

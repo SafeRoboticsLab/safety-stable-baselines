@@ -1,6 +1,6 @@
 """safety-stable-baselines: safety / reach-avoid RL on Stable-Baselines3.
 
-Here's a MAP to navigate the codebase — **Mode. Algorithm. Players.**
+Here's the MAP to navigate the codebase — **Mode. Algorithm. Players.**
 
     M = Mode       Safety | ReachAvoid | Cumulative   (which Bellman operator)
     A = Algorithm  PPO | SAC | A2C | DQN              (which RL method)

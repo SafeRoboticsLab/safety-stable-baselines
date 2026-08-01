@@ -50,11 +50,13 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - The MAP convention: map.md
   - API guide: API.md
   - Hyperparameters: hyperparameters.md
   - Environments:
       - Overview: environments/index.md
       - Bicycle5D: environments/bicycle5d.md
+  - Oracle validation: validation-oracle.md
   - Best practices: best-practices.md
   - Release notes: release-notes.md
   - Evaluation: eval.md

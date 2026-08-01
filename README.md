@@ -14,9 +14,9 @@ callbacks and loggers.
 the MAP taxonomy, the backups, and `terminal_type`. Start there to integrate the
 algorithms into your own project.
 
-## Algorithms — here's a MAP
+## Algorithms — here's the MAP
 
-**Here's a MAP to navigate the codebase — Mode. Algorithm. Players.**
+**Here's the MAP to navigate the codebase — Mode. Algorithm. Players.**
 
 ```
 M = Mode       Safety | ReachAvoid | Cumulative    (which Bellman operator)

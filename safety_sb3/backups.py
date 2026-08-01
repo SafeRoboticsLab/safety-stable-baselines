@@ -67,7 +67,7 @@ point at ``V = g > 0`` — a win — when the reach-avoid value of such a trajec
 is ``max_t min(l_t, min_{s<=t} g_s) = max_t l_t < 0``, a loss. The resulting
 fixed point is neither problem's value; RSS'21's under-approximation theorem
 (``RA_gamma`` nested inside ``RA``) stops applying, so the critic can wrongly
-certify reachability and is unsound to shield with. RSS'21 says of the
+certify reachability and is unsound to filter with. RSS'21 says of the
 g-anchored form (its eq. 13) that it approximates "safety or liveness problems,
 **but not both**".
 

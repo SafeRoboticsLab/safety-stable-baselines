@@ -206,7 +206,30 @@ class BicycleGoalTensorVec(TensorVecEnv):
       goal[:, 1] += self._u(-0.50, 0.50, k)
 
     s = th.zeros(k, 5, dtype=self.dtype, device=self.device)
-    if self.spawn in ("map", "wide"):
+    if self.spawn == "cover":
+      # CERTIFICATE-LEARNING coverage: uniform over the WHOLE reachable state
+      # space -- every position, EVERY heading, full speed and steering range --
+      # so the learned V̂ is defined everywhere the HJ oracle is (not just the
+      # goal-facing approach cone the task spawns sample). Used for E063 twins.
+      x = self._u(-0.6, 4.0, k)
+      y = self._u(-1.4, 1.4, k)
+      for _ in range(8):                   # reject spawns inside an obstacle
+        if self.n_obs:
+          dd = (th.hypot(obst[:, :, 0] - x[:, None], obst[:, :, 1] - y[:, None])
+                - obst[:, :, 2]).min(dim=1).values
+          bad = dd < 0.30
+        else:
+          bad = th.zeros(k, dtype=th.bool, device=self.device)
+        if not bool(bad.any()):
+          break
+        nb = int(bad.sum())
+        x[bad] = self._u(-0.6, 4.0, nb)
+        y[bad] = self._u(-1.4, 1.4, nb)
+      s[:, 0], s[:, 1] = x, y
+      s[:, 2] = self._u(0.0, 2.0, k)                  # full speed range
+      s[:, 3] = self._u(-3.14159265, 3.14159265, k)   # ALL headings
+      s[:, 4] = self._u(-0.35, 0.35, k)               # full steering range
+    elif self.spawn in ("map", "wide"):
       # Train where you eval. "wide" covers the APPROACH region (left side
       # through the obstacle band, FULL y-height); "map" runs x up to the goal
       # and injects degenerate near-goal spawns — kept for experiments only.
@@ -232,8 +255,9 @@ class BicycleGoalTensorVec(TensorVecEnv):
       s[:, 0] = self._start[0] + self._u(-0.15, 0.15, k)
       s[:, 1] = self._start[1] + self._u(-0.30, 0.30, k)
       s[:, 3] = self._u(-0.35, 0.35, k)
-    s[:, 2] = self._u(0.0, 0.4, k)
-    s[:, 4] = self._u(-0.10, 0.10, k)
+    if self.spawn != "cover":              # cover set v/delta above (full range)
+      s[:, 2] = self._u(0.0, 0.4, k)
+      s[:, 4] = self._u(-0.10, 0.10, k)
     self.obst[m], self.goal[m], self.s[m], self.t[m] = obst, goal, s, 0
 
   def reset(self) -> th.Tensor:

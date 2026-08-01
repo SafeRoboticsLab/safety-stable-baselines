@@ -16,13 +16,18 @@ break cannot do that.
 safety_sb3 @ git+https://github.com/SafeRoboticsLab/safety-stable-baselines.git@v0.3.0
 ```
 
+The rename is the largest change, but v0.4.0 also lands a **certificate-soundness
+fix** (the entropy bonus is removed from the safety critic target — §7, validated
+against an HJ oracle), a **CUDA-graph SAC speedup** (§8), and **new docs** (§9:
+the MAP convention and the oracle-validation study).
+
 ### Why
 
 Class names encoded paper lineage (`IsaacsPPO`, `GameplaySAC`), so using the library
 required knowing which paper introduced which game — and, after v0.2.0, which
 *version* of which name meant which game. Names now encode the algorithm instead:
 
-> **Here's a MAP to navigate the codebase — Mode. Algorithm. Players.**
+> **Here's the MAP to navigate the codebase — Mode. Algorithm. Players.**
 
 ```
 M = Mode       Safety | ReachAvoid | Cumulative    (which Bellman operator)
@@ -179,6 +184,42 @@ Class names below are the v0.4.0 ones.
 - The on-policy buffers (`SafetyRolloutBuffer` / `ReachAvoidRolloutBuffer` and
   their tensor twins) likewise share one `_target` that dispatches on `_MODE`.
 
+### 7. Certificate soundness — the entropy bonus is gone from the safety critic target
+
+**This is a behavioral fix for every SAC safety/reach-avoid learner; retrain to
+benefit.** The SAC critic target subtracted the maximum-entropy bonus
+(`next_q -= ent_coef · log_prob`) inside the Bellman backup. That term is correct
+for the *cumulative* backup (`r + γ·V'`, entropy-regularized RL), but the
+safety/reach-avoid backups are a `min`/`max` of *margins*, not a discounted
+reward sum — adding an entropy bonus there biases the value and **breaks the
+`{V ≥ 0}` certificate**. v0.4.0 removes the entropy term from the safety and
+reach-avoid critic targets (`sac_1p.py`, `sac_2p.py`); it stays in the cumulative
+target, where it belongs. PPO was never affected — its entropy lives in the loss,
+not the value target.
+
+Measured against a Hamilton-Jacobi reach-avoid **oracle** on the `bicycle5d`
+env: on-policy certificate precision — `P(policy reach-avoids | V̂ ≥ 0)` — is
+**0.98 with the fix vs 0.05 with the bug**. The full study, with the oracle
+solve and the reliability plots, is the new [Oracle validation](validation-oracle.md)
+page. If you trained a SAC safety/RA twin on ≤ v0.3.x, its value function is
+unsound as a certificate — retrain on v0.4.0.
+
+### 8. Performance — the SAC update is CUDA-graph-capturable
+
+The single- and two-player SAC update loops no longer issue in-loop host↔device
+syncs and use a fused Polyak target update, so the whole gradient step can be
+captured as a CUDA graph. On the GPU-resident tensor path this removes the
+per-step launch overhead that dominated at small batch sizes; no default or
+result changes (seeded traces are unchanged), it is purely a throughput fix.
+
+### 9. New documentation
+
+- **[The MAP convention](map.md)** — the canonical Mode·Algorithm·Players naming
+  law, the full learner roster, the abstract class hierarchy, and how the
+  environment layer composes with it. Read this first.
+- **[Oracle validation](validation-oracle.md)** — the `bicycle5d` reach-avoid
+  learner vs. a numerical HJ oracle: the soundness result behind §7.
+
 ## v0.3.0 — two-player SAC + reference-faithful discount annealing
 
 Additive release (no anchor/API breakage vs v0.2.x), with **one behavioral default
@@ -252,7 +293,7 @@ anchored reach-avoid on `g`. Consequences:
   the task — the **loiter optimum** — and the critic scored it as success.
 - **The fixed point was neither the reach-avoid value nor the avoid value.**
   RSS'21's under-approximation theorem (`RA_γ ⊆ RA`, nested increasing in γ) does
-  not apply to it, so *the critic is unsound to shield or filter with*: it can
+  not apply to it, so *the critic is unsound to filter with*: it can
   wrongly certify reachability. RSS'21 says of this `g`-anchored form (its eq. 13)
   that it approximates "safety or liveness problems, **but not both**".
 - **The SAC family (`ReachAvoidSAC`, the old `IsaacsSAC`) was already correct** and
@@ -344,7 +385,7 @@ two-player `IsaacsPPO`/`IsaacsSAC` exist precisely so this is possible.
    that assumed loitering is worth `g > 0` needs re-deriving: under the correct
    operator loitering is worth `l < 0`, so attempting only has to beat a negative
    baseline and the break-even attempt probability is lower.
-5. **If you consume a reach-avoid critic as a filter/shield** (value shielding,
+5. **If you consume a reach-avoid critic as a filter** (value filtering,
    Q-CBF/R-CBF), re-derive your guarantee. The old critic had no
    under-approximation property.
 

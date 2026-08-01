@@ -54,9 +54,9 @@ two-player learners the same bounds clamp **both** the ctrl and dstb alphas.
 
 ## Per-agent / per-network learning rates (two-player SAC)
 
-In the two-player games (`ReachAvoidSAC2P` / `SafetySAC2P`) each network can take its
+In the two-player games (`ReachAvoidSAC2P` / `SafetySAC2P`) each network can have its
 own learning rate. Each defaults to `None` → falls back to the shared
-`learning_rate`, so single-lr callers are unchanged.
+`learning_rate`, so callers that use a single learning rate are unaffected.
 
 | arg | default | meaning |
 |---|---|---|
@@ -67,11 +67,11 @@ own learning rate. Each defaults to `None` → falls back to the shared
 | `dstb_ent_coef_lr` | `None`→shared | dstb entropy-temperature optimizer lr |
 
 An **optional StepLR-style decay** (off by default) can decay the ctrl/dstb/critic
-lrs over training, mirroring the reference:
+learning rates over training, mirroring the reference:
 
 | arg | default | meaning |
 |---|---|---|
-| `lr_schedule` | `False` | enable StepLR decay of the network lrs |
+| `lr_schedule` | `False` | enable StepLR decay of the network learning rates |
 | `lr_period` | `1_000_000` | env-steps between decay steps |
 | `lr_decay` | `0.1` | multiplicative factor per decay step |
 | `lr_end` | `0.0` | lr floor |
@@ -86,7 +86,7 @@ sampled by a softmax over pairwise reach-avoid success scores.
 
 | arg | default | meaning |
 |---|---|---|
-| `use_leaderboard` | `False` (constructor) | enable the league. **On by default in the 2-agent training path** (`train.py --adversary`, `train_gameplay_sac.py`) |
+| `use_leaderboard` | `False` (constructor) | enable the league. **Used by the 2-player learners** (`ReachAvoidSAC2P` / `ReachAvoidPPO2P`); construct with `use_leaderboard=True`, or via the zoo router `train.py --family {off_policy,on_policy}` on an adversary task |
 | `leaderboard_eval_env` | `None` | env used to score pairings (required for the league to actually evaluate) |
 | `softmax_rationality` | `3.0` | softmax temperature β on the `[0,1]` success scores; higher β concentrates sampling on the strongest opponents (β=3 already puts ~56% of the mass on the top quartile; use ~5 for stronger dominance) |
 | `leaderboard_freq` | `10_000` | env-steps between league evaluations |
@@ -95,19 +95,20 @@ sampled by a softmax over pairwise reach-avoid success scores.
 
 > **⚡ Throughput — the league eval can dominate wall-clock.** Each `_leaderboard_step`
 > runs `~(nc+nd+2)` pairings, and each pairing steps the sim `n_eval_episodes × episode_len`
-> times. Profiling a two-player ReachAvoidSAC2P found ONE `_leaderboard_step` ≈ **100 s** vs a
-> ~90 ms train cycle — the league was **~97 % of wall-clock** at 1024 envs with the old
+> times. Profiling a two-player ReachAvoidSAC2P found that one `_leaderboard_step` took ≈ **100 s**, versus a
+> ~90 ms training cycle — the league consumed **~97% of wall-clock time** at 1024 envs with the old
 > `leaderboard_freq=10_000` / `n_eval_episodes=10`, capping throughput at ~500 FPS. The cost is
-> the **volume of sim steps**, not the obs transport. Two levers, both safety-neutral (the league
+> the **volume of simulation steps**, not observation transport. Three levers, all safety-neutral (the league
 > is a *relative* ranking):
 >
-> 1. **Raise `leaderboard_freq`** — 10k→2M fires ~200× less often. 2. **Lower `n_eval_episodes`**
->    — 10→3 cuts each firing ~3×. 3. **Pass a `TensorVecEnv` eval env** — dispatches to the
->    on-device `_eval_pair_tensor` (no numpy VecEnv, no per-step host↔device sync; obs normalized
+> 1. **Raise `leaderboard_freq`** — 10k→2M fires ~200× less often.
+> 2. **Lower `n_eval_episodes`** — 10→3 cuts each firing ~3×.
+> 3. **Pass a `TensorVecEnv` eval env** — dispatches to the
+>    on-device `_eval_pair_tensor` (no NumPy VecEnv, no per-step host↔device sync; observations are normalized
 >    via the live training normalizer).
 >
-> Together these took a 1024-env ReachAvoidSAC2P from **~500 → ~19,000 FPS (~30×)** — a 100 M-step run
-> from ~55 h to ~1.5 h. The zoo `examples/train_sac.py` uses these throughput defaults
+> Together, these took a 1024-env ReachAvoidSAC2P from **~500 → ~19,000 FPS (~30×)** — reducing a 100-million-step run
+> from ~55 hours to ~1.5 hours. The zoo's `examples/train_sac.py` uses these throughput defaults
 > (`--leaderboard-freq 2_000_000 --leaderboard-episodes 3`, raw tensor eval env).
 
 ## Safe-rate / success-rate evaluation
@@ -125,7 +126,7 @@ Definitions: **safe** = never entered the failure set (`g < 0`); **reached** =
 ever hit the target (`l_x >= 0`). The train scripts expose `--eval-rollouts`,
 `--eval-freq`, `--eval-envs`.
 
-## Common SAC knobs (reference values for go2)
+## Common SAC knobs (reference values for Go2)
 
 `learning_rate=1e-4`, `tau=0.01`, `target_update_interval=2`,
 `ent_coef="auto_0.1"` (auto-tune alpha from 0.1), `buffer_size`, `batch_size`,
