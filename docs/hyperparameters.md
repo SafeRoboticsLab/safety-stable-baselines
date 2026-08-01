@@ -1,10 +1,33 @@
 # Tunable hyperparameters
 
-Every learner in the MAP roster — `{Safety,ReachAvoid,Cumulative}{PPO,SAC,A2C,DQN}{1P,2P}`,
-so `SafetyPPO1P`, `ReachAvoidSAC2P`, and the rest — takes the
-knobs below as constructor arguments. Defaults are chosen to match the reference
-ISAACS codebase (`safe_adaptation_dev`) out of the box. Anything not listed here
-is a stock Stable-Baselines3 argument.
+These are the safety-specific constructor arguments `safety_sb3` adds on top of
+Stable-Baselines3. Defaults match the reference ISAACS codebase
+(`safe_adaptation_dev`) out of the box. Anything not listed here is a stock SB3 argument.
+
+**Not every knob applies to every learner.** Which ones a class accepts depends on its
+Algorithm and player count — passing a knob a class does not accept raises `TypeError`.
+Start from this applicability matrix, then read the sections below.
+
+| Parameter | PPO | SAC | A2C | DQN | 1P | 2P |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `gamma_anneal` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `min_alpha` / `max_alpha` | — | ✓ | — | — | ✓ | ✓ |
+| `adaptive_lr` / `desired_kl` | ✓ | — | — | — | ✓ | ✓ |
+| `terminal_type` | RA | RA¹ | RA | — | ✓ | ✓ |
+| `ctrl_action_dim` | 2P | 2P | — | — | — | ✓ |
+| `dstb_learning_rate` | 2P | 2P | — | — | — | ✓ |
+| `use_leaderboard` | 2P | 2P | — | — | — | ✓ |
+| `leaderboard_eval_env` | — | 2P | — | — | — | ✓ |
+
+Legend: **✓** applies · **—** not accepted · **RA** reach-avoid variants only · **2P**
+two-player variants only.
+
+¹ On the **SAC** family `terminal_type` is a base-class kwarg, so the avoid learners
+(`SafetySAC*`) also *accept* it and simply **ignore** it. On the **PPO/A2C** families it
+lives on the reach-avoid mixin, so an avoid learner (`SafetyPPO1P`, `SafetyA2C1P`) does
+**not** accept it — see [Backups → where `terminal_type` applies](concepts/backups.md#where-terminal_type-applies-by-family).
+`leaderboard_eval_env` is `*SAC2P`-only because `*PPO2P` scores its league from training
+outcomes, with no eval env (see [Train an adversarial policy](how-to/train-adversarial.md)).
 
 ## Discount annealing (gamma)
 
@@ -126,7 +149,12 @@ Definitions: **safe** = never entered the failure set (`g < 0`); **reached** =
 ever hit the target (`l_x >= 0`). The train scripts expose `--eval-rollouts`,
 `--eval-freq`, `--eval-envs`.
 
-## Common SAC knobs (reference values for Go2)
+## Advanced recipe — reference SAC values for Go2
+
+!!! note
+    These are a **tuned recipe** for the large-scale Go2 locomotion task, not the
+    general default. For a first run, start from the [Quickstart](getting-started/quickstart.md)
+    defaults and only reach for these once you are training at GPU scale.
 
 `learning_rate=1e-4`, `tau=0.01`, `target_update_interval=2`,
 `ent_coef="auto_0.1"` (auto-tune alpha from 0.1), `buffer_size`, `batch_size`,

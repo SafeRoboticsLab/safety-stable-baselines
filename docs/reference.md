@@ -1,7 +1,9 @@
 # Code reference
 
-Auto-generated from source docstrings. See the [API guide](API.md) for the
-conceptual contract, and the [index](index.md) for the MAP naming law.
+Auto-generated from source docstrings. For the conceptual contract see
+[Core concepts](concepts/environment-contract.md) — the [environment
+contract](concepts/environment-contract.md), the [backups](concepts/backups.md), and the
+[MAP naming law](map.md).
 
 The module layout follows MAP: buffers carry the **Mode**, the `*_1p` / `*_2p`
 modules carry the **Players**, and the `*_base` modules hold what both player counts
@@ -71,11 +73,25 @@ of an **Algorithm** share.
     options:
       members: [StepGammaAnneal, GeometricGammaAnneal, GammaAnnealMixin, make_default_gamma_schedule]
 
-## Evaluation callbacks
+## Environments and normalization
+
+The GPU-resident tensor path. Subclass `TensorVecEnv` and implement `step_tensor`; wrap
+in `TensorVecNormalize` for on-device observation normalization. See
+[the environment contract](concepts/environment-contract.md#the-tensor-path).
+
+::: safety_sb3.tensor_env
+    options:
+      members: [TensorVecEnv, TensorVecNormalize]
+
+## Callbacks
 
 ::: safety_sb3.eval_callbacks
     options:
       members: [SafeSuccessRateEvalCallback]
+
+::: safety_sb3.callbacks
+    options:
+      members: [StdCapCallback]
 
 ## Buffers
 

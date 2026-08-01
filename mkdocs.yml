@@ -1,12 +1,20 @@
 site_name: safety-stable-baselines
-site_description: Hamilton-Jacobi safety RL, reach-avoid RL, and ISAACS on Stable-Baselines3
+site_description: Train RL policies that stay safe, reach goals safely, and resist disturbances — safety, reach-avoid, and adversarial safety RL on Stable-Baselines3.
 repo_url: https://github.com/SafeRoboticsLab/safety-stable-baselines
 repo_name: SafeRoboticsLab/safety-stable-baselines
 edit_uri: edit/main/
 
 theme:
   name: material
-  features: [navigation.sections, navigation.top, content.code.copy, toc.follow]
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+    - toc.follow
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -24,6 +32,7 @@ extra_css:
 
 exclude_docs: |
   log/
+  website_audit.md
 
 plugins:
   - search
@@ -47,17 +56,34 @@ markdown_extensions:
   - tables
   - toc: { permalink: true }
   - pymdownx.snippets: { base_path: [.] }
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
   - Home: index.md
-  - The MAP convention: map.md
-  - API guide: API.md
-  - Hyperparameters: hyperparameters.md
-  - Environments:
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+      - Choose a learner: getting-started/choose-a-learner.md
+  - Core concepts:
+      - Safety margins & certificates: concepts/safety-margins.md
+      - The environment contract: concepts/environment-contract.md
+      - The MAP convention: map.md
+      - Backups & terminal handling: concepts/backups.md
+  - How-to guides:
+      - Adapt a Gymnasium environment: how-to/adapt-environment.md
+      - Train an adversarial policy: how-to/train-adversarial.md
+      - Evaluate a policy: how-to/evaluate.md
+      - Deploy a safety filter: how-to/deploy-filter.md
+  - Examples:
       - Overview: environments/index.md
       - Bicycle5D: environments/bicycle5d.md
-  - Oracle validation: validation-oracle.md
-  - Best practices: best-practices.md
-  - Release notes: release-notes.md
-  - Evaluation: eval.md
-  - Code reference: reference.md
+  - Training guide:
+      - Hyperparameters: hyperparameters.md
+      - Best practices: best-practices.md
+  - Validation & theory:
+      - Oracle validation: validation-oracle.md
+  - API reference: reference.md
+  - Project:
+      - Release notes: release-notes.md

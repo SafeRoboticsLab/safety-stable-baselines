@@ -10,9 +10,13 @@ L4DC '23) — plus a GPU-resident tensor path for massively parallel simulators
 package and still feels native to SB3 users: same constructors, same `learn()`, same
 callbacks and loggers.
 
-📖 **[docs/API.md](docs/API.md)** is the canonical API reference — the env contract,
-the MAP taxonomy, the backups, and `terminal_type`. Start there to integrate the
-algorithms into your own project.
+📖 **The [documentation site](https://saferoboticslab.github.io/safety-stable-baselines/)**
+is the canonical reference — [installation](docs/getting-started/installation.md), a
+[quickstart](docs/getting-started/quickstart.md), the [environment
+contract](docs/concepts/environment-contract.md), the [MAP naming law](docs/map.md), the
+[backups and `terminal_type`](docs/concepts/backups.md), and the
+[API reference](docs/reference.md). Start there to integrate the algorithms into your own
+project.
 
 ## Algorithms — here's the MAP
 
@@ -174,12 +178,16 @@ pip install -e .
 ```
 
 That is the whole core install (deps: `stable-baselines3`, `torch`, `gymnasium`,
-`numpy`, `tensorboard`, `wandb`). To depend on a released version from another
-project (e.g. [robot-safety-sandbox](https://github.com/SafeRoboticsLab/robot-safety-sandbox)):
+`numpy`, `tensorboard`, `wandb`). The package is **not on PyPI** — depend on it from
+another project (e.g. [robot-safety-sandbox](https://github.com/SafeRoboticsLab/robot-safety-sandbox))
+via a Git pin to the current release, `v0.4.0`:
 
 ```
-safety_sb3 @ git+https://github.com/SafeRoboticsLab/safety-stable-baselines.git@v0.1.0
+safety_sb3 @ git+https://github.com/SafeRoboticsLab/safety-stable-baselines.git@v0.4.0
 ```
+
+**Pin the tag** — `v0.4.0` is a breaking rename of every learner class (see
+[RELEASE_NOTES.md](RELEASE_NOTES.md)); for the pre-rename names pin `@v0.3.0`.
 
 Optional extras for the bundled benchmark environments (only needed to run the
 `examples/`): this repo includes

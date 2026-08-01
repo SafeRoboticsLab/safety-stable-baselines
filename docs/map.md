@@ -35,7 +35,7 @@ Two structural gaps, both enforced (not silent):
 
 - **Mode** picks the *Bellman operator*, and nothing else. It is carried by the class attribute
   `_MODE` (one of `backups.AVOID | REACH_AVOID | CUMULATIVE`) and consumed by
-  [`safety_sb3.backups`](API.md); the same actor/critic/entropy machinery runs underneath every mode.
+  [`safety_sb3.backups`](concepts/backups.md); the same actor/critic/entropy machinery runs underneath every mode.
   In tasks, you usually don't name the class — you set `mode`, and the target's presence determines it:
   a task that declares a reach target (`l`) is `reach-avoid`, one that only has a safety margin (`g`)
   is `safety`, and an ordinary-reward task is `cumulative`.
@@ -79,8 +79,9 @@ algorithm at once.
 ### `2P` is not one algorithm
 
 `*PPO2P` and `*SAC2P` both hold two actors but play the game differently (on-policy alternation vs.
-off-policy joint-action critic with a self-play league). See [API guide → 2P](API.md) for the
-per-family details and the leaderboard knobs in [Hyperparameters](hyperparameters.md).
+off-policy joint-action critic with a self-play league). See
+[Train an adversarial policy](how-to/train-adversarial.md) for the per-family details and
+the leaderboard knobs in [Hyperparameters](hyperparameters.md).
 
 ## How the environment layer composes with the MAP
 
@@ -89,9 +90,16 @@ hard-codes a learner. A task declares its `mode` (via its margins) and whether i
 `supports_adversary`; the trainer then resolves the class by a **formula, not a lookup**:
 
 ```python
-algo_name(task_id, adversary=False, family="on_policy") -> "ReachAvoidSAC2P"   # e.g.
-#          └ Mode from the task            └ Players            └ Algorithm from --family
+# for a reach-avoid task:
+algo_name(task_id, adversary=False, family="on_policy")  -> "ReachAvoidPPO1P"
+algo_name(task_id, adversary=True,  family="on_policy")  -> "ReachAvoidPPO2P"
+algo_name(task_id, adversary=False, family="off_policy") -> "ReachAvoidSAC1P"
+#          └ Mode from the task     └ Players (2P iff adversary)  └ Algorithm from family
 ```
+
+The name is a *formula* — `family="on_policy"` selects **PPO** (not SAC), and
+`adversary=False` selects **1P** (not 2P) — so `family="on_policy", adversary=False` on a
+reach-avoid task is `ReachAvoidPPO1P`.
 
 Thus, `train.py --config … --family {on_policy|off_policy}` on a task picks exactly one MAP cell. The two
 layers stay decoupled: the registry re-declares the mode strings as literals (pinned by a test) and

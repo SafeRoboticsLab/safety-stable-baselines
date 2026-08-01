@@ -20,7 +20,7 @@ and its own environment showreel.
     still; **reach-avoid** reaches from anywhere. Includes
     the learned value-function certificate and a PPO-vs-SAC value comparison.
 
-    `SafetyPPO` · `SafetySAC` · `ReachAvoidPPO` · `ReachAvoidSAC`
+    `SafetyPPO1P` · `SafetySAC1P` · `ReachAvoidPPO1P` · `ReachAvoidSAC1P`
 
 </div>
 

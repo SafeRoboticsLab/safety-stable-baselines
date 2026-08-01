@@ -49,12 +49,22 @@ states and bin the empirical reach-avoid success rate by `V̂`:
 
 The success rate rises sharply through `V̂ = 0` — a **calibrated** certificate. Quantitatively (two seeds):
 
-| metric | value |
-|---|---|
-| precision = P(policy reach-avoids \| `V̂ ≥ 0`) | **0.98** |
-| false-safe rate (certified, policy fails) | **~0.08** |
+| metric | conditioned on | value |
+|---|---|---|
+| **precision** = P(policy reach-avoids \| `V̂ ≥ 0`) | the **certified** states | **0.98** |
+| **false-safe rate** = P(`V̂ ≥ 0` \| policy fails) | the states where the policy **actually fails** | **~0.08** |
 
-This is coverage-independent (it holds whether the critic is trained on a narrow or a full-coverage
+!!! note "These two numbers are not complements"
+    They condition on **different events**, so `false-safe rate ≠ 1 − precision`.
+    `1 − precision = 0.02` is the error *among the states the certificate accepts* (a
+    false-**discovery** rate: of everything called safe, how much is wrong). The
+    **false-safe rate** is measured *among the states the policy genuinely cannot keep
+    safe* (a false-**positive** rate: of all true failures, how many the certificate
+    wrongly waved through). Both are small — the certificate rarely accepts a state the
+    policy cannot hold (`0.02`), and rarely misses a genuinely failing state (`~0.08`) —
+    but they answer different questions, which is why the values differ.
+
+Both are coverage-independent (they hold whether the critic is trained on a narrow or a full-coverage
 state distribution), which the raw overlap-with-the-oracle-set metric is **not** — see the note below.
 
 !!! note "Why we grade on soundness, not raw set-overlap with the oracle"
@@ -71,8 +81,8 @@ state distribution), which the raw overlap-with-the-oracle-set metric is **not**
 
 - **Train** the certificate: a `ReachAvoidSAC1P` on `bicycle5d` (fixed scene, `spawn="cover"` for
   full state-space coverage, discount annealed toward `0.99999`). See
-  [`safety_sb3.testing.bicycle5d`](environments/bicycle5d.md) and the `ReachAvoid` learners in the
-  [API guide](API.md).
+  [`safety_sb3.testing.bicycle5d`](environments/bicycle5d.md) and the `ReachAvoid` learners'
+  operator in [Backups](concepts/backups.md).
 - **Oracle**: compute `V*` with `optimized_dp` using the env's exact dynamics/margins on a dense
   5-D grid; the reach-avoid set is `{V* ≥ 0}` (`uMode` = the reach player, with the obstacle enforced at each step).
 - **Grade**: evaluate `V̂ = min_i Q_i(s, π(s))` on the grid, roll the policy out from each sampled

@@ -7,9 +7,9 @@ minutes** — the library's reference validation env.
 Use this environment to quickly check your installation, get started with the codebase,
 and observe the difference between two modes of safety training:
 
-- **avoid** (`SafetySAC` / `SafetyPPO`): learn to avoid collisions without a goal-reaching incentive (always safe).
+- **avoid** (`SafetySAC1P` / `SafetyPPO1P`): learn to avoid collisions without a goal-reaching incentive (always safe).
   <!-- and `g > 0` is already satisfied where the car starts — so the optimal policy is to **sit still** (and only swerve if something approaches). The negative control. -->
-- **reach-avoid** (`ReachAvoidSAC` / `ReachAvoidPPO`): drive to the goal from
+- **reach-avoid** (`ReachAvoidSAC1P` / `ReachAvoidPPO1P`): drive to the goal from
   anywhere on the map without hitting an obstacle (always remain safe and eventually reach the goal).
 
 <!-- `reach_rate(reach-avoid) ≫ reach_rate(avoid)` is the whole assertion — and it is
@@ -40,7 +40,7 @@ still.
 
 </div>
 
-<!-- **Coverage:** `ReachAvoidSAC` 100%, `ReachAvoidPPO` 97% (from standstill, over the
+<!-- **Coverage:** `ReachAvoidSAC1P` 100%, `ReachAvoidPPO1P` 97% (from standstill, over the
 32 eval cars); avoid 0%. -->
 
 ### The learned value function `V(x, y)`
@@ -99,16 +99,16 @@ turning radius 0.70 m. RK4 integration.
 ## Run it
 
 ```python
-from safety_sb3 import ReachAvoidSAC          # or ReachAvoidPPO
+from safety_sb3 import ReachAvoidSAC1P        # or ReachAvoidPPO1P
 from safety_sb3.testing.bicycle5d_vec import BicycleGoalVec
 
 env = BicycleGoalVec(16, spawn="wide")        # batched, full-map spawns
-model = ReachAvoidSAC("MlpPolicy", env, buffer_size=500_000, learning_starts=5000,
-                      batch_size=512, train_freq=(16, "step"), gradient_steps=16)
+model = ReachAvoidSAC1P("MlpPolicy", env, buffer_size=500_000, learning_starts=5000,
+                        batch_size=512, train_freq=(16, "step"), gradient_steps=16)
 model.learn(2_000_000)                        # ~100% coverage
 ```
 
-The avoid setup is the same with `SafetySAC` (no `l` is used). The full demo —
+The avoid setup is the same with `SafetySAC1P` (no `l` is used). The full demo —
 multi-car GIFs, value maps, and the PPO/SAC comparison — is
 [`examples/bicycle5d_demo.py`](https://github.com/SafeRoboticsLab/safety-stable-baselines/blob/main/examples/bicycle5d_demo.py)
 and
