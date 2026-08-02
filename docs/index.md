@@ -1,11 +1,17 @@
-# safety-stable-baselines
+# Safety Stable-Baselines3
 
-**Train reinforcement-learning policies that come with a safety guarantee** — a
+**Train reinforcement-learning policies that come with a learned safety certificate** — a
 learned value function whose sign tells you, at every state, whether the policy can
 keep the system safe. `safety_sb3` is a lightweight add-on for
 [Stable-Baselines3](https://stable-baselines3.readthedocs.io/): same constructors,
 same `learn()`, same callbacks — you swap the learner class and give the environment a
 safety margin instead of a reward.
+
+![Learned reach-avoid certificate vs. a numerical Hamilton–Jacobi oracle on bicycle5d](assets/oracle/oracle_vs_learned.png){ width="720" }
+
+*The reach-avoid value learned by `safety_sb3` recovers the exact Hamilton–Jacobi
+reach-avoid set computed by a numerical oracle — the certificate is **sound**, not
+just plausible. [See the full validation study →](validation-oracle.md)*
 
 It implements three families of safety RL, plus a GPU-resident path for
 massively-parallel simulators:

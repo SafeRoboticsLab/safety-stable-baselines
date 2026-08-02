@@ -1,16 +1,22 @@
-/* Princeton orange (#E77500, Pantone 158) + black accents */
+/* safety_sb3 identity: deep teal (distinct from the robot-safety-sandbox orange) */
 [data-md-color-primary=custom] {
-  --md-primary-fg-color:        #E77500;
-  --md-primary-fg-color--light: #F1A04A;
-  --md-primary-fg-color--dark:  #B35C00;
+  --md-primary-fg-color:        #00796B;
+  --md-primary-fg-color--light: #4DB6AC;
+  --md-primary-fg-color--dark:  #004C40;
   --md-primary-bg-color:        #ffffff;
   --md-primary-bg-color--light: #ffffffb3;
 }
 [data-md-color-accent=custom] {
-  --md-accent-fg-color:             #B35C00;
-  --md-accent-fg-color--transparent:#E7750033;
+  --md-accent-fg-color:             #00897B;
+  --md-accent-fg-color--transparent:#00796B33;
 }
-/* keep links legible against orange in dark mode */
+/* keep links legible against teal in dark mode */
 [data-md-color-scheme=slate] {
-  --md-typeset-a-color: #F1A04A;
+  --md-typeset-a-color: #4DB6AC;
 }
+
+/* tighten the gap between the header logo and the site title
+   (must out-specify Material's [dir=ltr] .md-header__title{margin-left:1rem}) */
+.md-header__button.md-logo { padding-right: 0.2rem; margin-right: 0; }
+[dir=ltr] .md-header__title { margin-left: 0; }
+[dir=rtl] .md-header__title { margin-right: 0; }

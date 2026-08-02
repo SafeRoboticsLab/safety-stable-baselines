@@ -9,7 +9,9 @@ That single scalar is how you tell a safety learner what "safe" means. You do no
 a reward that trades off progress against risk; you hand the learner the margin and it
 learns the largest set of states from which safety can be maintained. The learned value
 function is that answer, and — because it is grounded in the margin — its **sign is a
-certificate** you can trust at deployment time.
+learned safety certificate**: an empirical certificate whose soundness we validate against
+a ground-truth reachability solve (see [oracle validation](../validation-oracle.md)),
+rather than a formally verified guarantee.
 
 ## The two margins
 
@@ -29,22 +31,33 @@ risk trade-off between committing to a maneuver and stopping (see
 
 ## The certificate: `V ≥ 0`
 
-A trained value function `V` satisfies:
+**In theory.** At the Bellman fixed point — under the stated assumptions (the right
+`min`/`max` backup over margins, `γ → 1`, exact function representation) — the value
+function `V` satisfies:
 
 > `V(s) ≥ 0` ⟺ **the policy can stay safe from `s`** — forever (avoid) or until it
 > reaches the target without ever failing (reach-avoid).
 
+`{V ≥ 0}` is then the **certified set**: the safe-controllable region, with `{V = 0}` its
+boundary.
+
+**In practice.** What you actually train is a *neural approximation* `V̂` of that fixed
+point from finite data, so `{V̂ ≥ 0}` is a **learned certificate estimate**, not a
+formally verified set. Whether it can be trusted is an *empirical* question — is `V̂`
+sound? — that we answer by measurement: on `bicycle5d`, `V̂ ≥ 0` predicts closed-loop
+reach-avoid success with **~98% precision** against a Hamilton–Jacobi ground truth (see
+the [oracle validation](../validation-oracle.md)). Treat `{V̂ ≥ 0}` as a well-validated
+certificate, not a guarantee.
+
 This is the property that makes `safety_sb3`'s value functions usable as a **runtime
 safety filter**: run your nominal controller, and switch to the safety policy whenever
-the nominal's proposed next state has `V < 0`. The zero level set `{V = 0}` is the
-boundary of the safe-controllable region.
+the nominal's proposed next state has `V̂ < 0`.
 
-For this to hold, the value function must be learned with the right Bellman operator —
-a `min`/`max` recursion over margins, **not** a discounted sum of rewards. That is what
-[Backups](backups.md) are about, and getting it exactly right (no entropy bonus in the
-critic target) is what makes the certificate *sound* rather than overconfident — see the
-[oracle validation](../validation-oracle.md) study, which measures the certificate
-against a Hamilton–Jacobi ground truth.
+For the estimate to approach the certified set, the value function must be learned with the
+right Bellman operator — a `min`/`max` recursion over margins, **not** a discounted sum of
+rewards. That is what [Backups](backups.md) are about, and getting it exactly right (no
+entropy bonus in the critic target) is what makes the learned certificate *sound* rather
+than overconfident — as the [oracle validation](../validation-oracle.md) study measures.
 
 ## How the library represents it
 

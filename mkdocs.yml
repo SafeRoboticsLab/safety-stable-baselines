@@ -1,4 +1,4 @@
-site_name: safety-stable-baselines
+site_name: Safety Stable-Baselines3
 site_description: Train RL policies that stay safe, reach goals safely, and resist disturbances — safety, reach-avoid, and adversarial safety RL on Stable-Baselines3.
 repo_url: https://github.com/SafeRoboticsLab/safety-stable-baselines
 repo_name: SafeRoboticsLab/safety-stable-baselines
@@ -6,6 +6,9 @@ edit_uri: edit/main/
 
 theme:
   name: material
+  icon:
+    logo: material/shield-check   # safety certificate — the library's identity
+  favicon: assets/favicon.svg
   features:
     - navigation.sections
     - navigation.top
@@ -33,6 +36,7 @@ extra_css:
 exclude_docs: |
   log/
   website_audit.md
+  website_audit_round2.md
 
 plugins:
   - search

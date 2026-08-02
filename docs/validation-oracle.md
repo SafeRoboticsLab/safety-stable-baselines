@@ -64,8 +64,11 @@ The success rate rises sharply through `V̂ = 0` — a **calibrated** certificat
     policy cannot hold (`0.02`), and rarely misses a genuinely failing state (`~0.08`) —
     but they answer different questions, which is why the values differ.
 
-Both are coverage-independent (they hold whether the critic is trained on a narrow or a full-coverage
-state distribution), which the raw overlap-with-the-oracle-set metric is **not** — see the note below.
+In these experiments both metrics stayed stable across the tested training-coverage regimes
+(whether the critic was trained on a narrow or a full-coverage state distribution) — unlike the raw
+overlap-with-the-oracle-set metric, which does not (see the note below). This is an empirical
+observation on the tested distributions, **not** distributional independence: precision still
+depends on class prevalence and the false-safe rate on how failing states are sampled.
 
 !!! note "Why we grade on soundness, not raw set-overlap with the oracle"
     The SAC critic estimates `V^π`, the value of *its own* policy; the HJ oracle is the value of the
@@ -88,8 +91,9 @@ state distribution), which the raw overlap-with-the-oracle-set metric is **not**
 - **Grade**: evaluate `V̂ = min_i Q_i(s, π(s))` on the grid, roll the policy out from each sampled
   state, and report precision / false-safe / the reliability curve above.
 
-The exact solver and evaluation scripts used for this page are available in the project's experiment
-artifacts.
+The raw oracle artifacts are **not shipped in this repository**: only the figures on this page (under
+`docs/assets/oracle/`) are included. The numerical HJ solve (the dense 5-D `optimized_dp` value grid)
+and the evaluation scripts live outside the repo, in the project's experiment artifacts.
 
 ## Takeaway
 

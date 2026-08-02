@@ -63,9 +63,10 @@ that the policy actually reach-avoids from `s`? — measure **on-policy soundnes
 - **calibration** — bin sampled states by `V̂` and plot empirical success per bin; a sound
   certificate rises sharply through `V̂ = 0`.
 
-This is coverage-independent, unlike raw overlap with an oracle set. The full
-methodology, with a Hamilton–Jacobi ground truth on Bicycle5D, is the
-[oracle validation](../validation-oracle.md) study.
+In our experiments this stayed stable across the tested training-coverage regimes, unlike
+raw overlap with an oracle set (an empirical observation, not distributional
+independence). The full methodology, with a Hamilton–Jacobi ground truth on Bicycle5D, is
+the [oracle validation](../validation-oracle.md) study.
 
 ## Two-player evaluation
 

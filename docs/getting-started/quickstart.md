@@ -53,26 +53,30 @@ model.save("pendulum_safety")
 ## Expected output
 
 SB3's standard training table prints as it learns. Because the reward *is* the margin,
-`rollout/ep_rew_mean` is the **mean per-step safety margin** — it should climb toward a
-small positive number as the policy learns to hold the pole upright, and
-`rollout/ep_len_mean` should rise toward the episode cap (200) as breaches become rare:
+`rollout/ep_rew_mean` is the **mean episodic return** — the per-step margin `g` **summed
+over an episode**, then averaged across completed episodes. It should climb positive as
+the policy learns to hold the pole upright, and `rollout/ep_len_mean` should rise toward
+the episode cap (200) as breaches become rare. To recover the **mean per-step margin**,
+divide `ep_rew_mean` by `ep_len_mean` (here `≈ 68 / 200 ≈ 0.34`):
 
 ```
 | rollout/            |          |
 |    ep_len_mean      | 200      |
-|    ep_rew_mean      | 0.34     |   <- mean margin per step, now positive
+|    ep_rew_mean      | 68       |   <- episodic return (sum of g); ~0.34 margin/step x 200
 | train/              |          |
 |    gamma            | 0.999    |   <- discount is annealed up automatically
 ```
 
-Read the certificate for a state — `V(s) = min_i Q_i(s, pi(s))`:
+Read the certificate for a state — `V(s) = min_i Q_i(s, pi(s))`. Use the **deterministic**
+action (the deployed policy), so the value reflects deployed behavior and is reproducible
+— SAC's actor samples by default:
 
 ```python
 import torch
 obs, _ = env.reset(seed=0)
 o = torch.as_tensor(obs, dtype=torch.float32, device=model.device).unsqueeze(0)
 with torch.no_grad():
-    a = model.policy.actor(o)
+    a = model.policy.actor(o, deterministic=True)   # deployed action, not a sample
     v = torch.cat(model.policy.critic(o, a), dim=1).min(dim=1).values
 print("V(s) =", float(v), "-> safe-controllable" if v >= 0 else "-> not certified")
 ```
@@ -122,9 +126,12 @@ A complete PPO reach-avoid script ships as
 
 ## Common failures
 
-- **`ep_rew_mean` looks huge / tiny and never stabilizes.** You are normalizing the
-  reward. `VecNormalize(norm_reward=True)` (or any reward scaler) destroys the margin —
-  the reward *is* `g`. Observation normalization is fine.
+- **`ep_rew_mean` no longer tracks the summed margin.** A large `ep_rew_mean` is
+  normal — it is `g` summed over up to 200 steps, so it grows with episode length, not a
+  red flag on its own. The warning sign is a value that stops tracking `sum(g)` — it
+  saturates near `±1`, or drifts as episodes lengthen without the margin changing — which
+  usually means a reward scaler is active. `VecNormalize(norm_reward=True)` (or any reward
+  scaler) destroys the margin: the reward *is* `g`. Observation normalization is fine.
 - **The value never goes positive.** The task may genuinely be infeasible from your
   reset states, or you terminated too late (states past a breach poison the target).
 - **`ReachAvoidSAC1P` needs `info["l_x"]`.** Without a target margin it has nothing to
