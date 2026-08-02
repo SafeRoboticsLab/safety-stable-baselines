@@ -7,11 +7,12 @@ keep the system safe. `safety_sb3` is a lightweight add-on for
 same `learn()`, same callbacks — you swap the learner class and give the environment a
 safety margin instead of a reward.
 
-![Learned reach-avoid certificate vs. a numerical Hamilton–Jacobi oracle on bicycle5d](assets/oracle/oracle_vs_learned.png){ width="720" }
+![Learned reach-avoid value, and the learned policy converging to the goal from across the map](assets/oracle/learned_value_rollouts.gif){ width="760" }
 
-*The reach-avoid value learned by `safety_sb3` recovers the exact Hamilton–Jacobi
-reach-avoid set computed by a numerical oracle — the certificate is **sound**, not
-just plausible. [See the full validation study →](validation-oracle.md)*
+*Left: the reach-avoid **value** `safety_sb3` learns on `bicycle5d` — its zero level set is an online
+safety certificate. Right: the learned policy, rolled out from a grid of reach-avoidable starts (including
+past the goal), reaches the target from every one while weaving around the obstacles. [Validated against
+a Hamilton–Jacobi oracle →](validation-oracle.md)*
 
 It implements three families of safety RL, plus a GPU-resident path for
 massively-parallel simulators:
