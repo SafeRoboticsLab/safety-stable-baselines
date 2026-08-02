@@ -78,10 +78,13 @@ class AbstractPPO2P(AbstractPPO):
       player; the rest are the disturbance.
   :param dstb_pretrain_rollouts: rollouts spent training only the disturbance
       before the alternation starts.
-  :param ctrl_rollouts_per_cycle / dstb_rollouts_per_cycle: the alternation.
+  :param ctrl_rollouts_per_cycle: control-player rollouts per alternation cycle.
+  :param dstb_rollouts_per_cycle: disturbance-player rollouts per alternation cycle.
   :param use_leaderboard: archive opponents and assign them to env slices.
-  :param dstb_learning_rate / dstb_ent_coef: per-player optimization; ``None``
-      inherits the ctrl value.
+  :param dstb_learning_rate: disturbance-player learning rate; ``None`` inherits
+      the ctrl value.
+  :param dstb_ent_coef: disturbance-player entropy coefficient; ``None`` inherits
+      the ctrl value.
   """
 
   def __init__(
