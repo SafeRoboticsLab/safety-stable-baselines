@@ -73,11 +73,21 @@ class AbstractSAC(GammaAnnealMixin, SAC):
                replay_buffer_class=None, terminal_type: str = "all",
                normalize_obs: bool = False, gamma_anneal=True,
                min_alpha: float | None = 1e-3, max_alpha: float | None = None,
+               bootstrap_on_timeout: bool | None = None,
                **kwargs):
     # The mode must be known before super().__init__ -> _setup_model, which
     # picks the buffer (an l-carrying one for reach-avoid).
     self._MODE = backups.check_mode(self._MODE if mode is None else mode)
     self.terminal_type = backups.check_terminal_type(terminal_type)
+    # Timeout handling, mirroring PPO's `bootstrap_on_timeout=False` default for
+    # the margin modes. For safety / reach-avoid a timeout is the finite-horizon
+    # CUTOFF, valued min(l,g) at that state (the reference does this; see
+    # tensor_replay.py). Bootstrapping it instead targets V(next_obs)=V(RESET
+    # spawn) on auto-reset envs -> corrupt under a hostile/reverse-curriculum
+    # reset. Only CUMULATIVE (ordinary reward) should bootstrap a timeout.
+    if bootstrap_on_timeout is None:
+      bootstrap_on_timeout = (self._MODE == backups.CUMULATIVE)
+    self._bootstrap_on_timeout = bool(bootstrap_on_timeout)
     if self._MODE == backups.REACH_AVOID:
       if replay_buffer_class is None:
         replay_buffer_class = ReachAvoidReplayBuffer
@@ -139,6 +149,7 @@ class AbstractSAC(GammaAnnealMixin, SAC):
       n_envs=self.env.num_envs,
       device=str(self.device),
       store_l=self._tensor_store_l,
+      bootstrap_on_timeout=self._bootstrap_on_timeout,
     )
     self._setup_entropy_bounds()
 

@@ -7,11 +7,19 @@ step; `sample` gathers uniformly on device and returns the SAME named tuples
 the numpy buffers return — so the SAC-family `train()` runs
 UNCHANGED on top of it.
 
-Semantics mirrored from the numpy path exactly:
+Semantics:
   * `rewards` field carries the safety margin g(s).
-  * effective dones at sample time = `dones * (1 - timeouts)` (SB3's timeout
-    handling: a timeout-truncated transition bootstraps from its stored
-    next_obs).
+  * effective dones at sample time depend on `bootstrap_on_timeout`:
+      True  -> `dones * (1 - timeouts)`  (SB3's convention: a timeout-truncated
+               transition bootstraps its stored next_obs). CORRECT for CUMULATIVE
+               (an arbitrary time cutoff on an ordinary return should bootstrap).
+      False -> `dones`  (a timeout is TERMINAL, valued min(l,g) by the backup).
+               CORRECT for the MARGIN modes (safety / reach-avoid): a timeout is
+               the finite-horizon cutoff of the reach-avoid value (Gameplay
+               Filters eq.5b). Matches the reference (safe_adaptation_dev
+               `agent/replay_memory.py`: non_final = ~done, and `done` includes
+               timeout) and safety_sb3's own PPO (`bootstrap_on_timeout=False`).
+               `AbstractSAC` sets this default from `_MODE`.
   * `l_x` is stored when `store_l=True` (reach-avoid).
 
 Two documented deviations from SB3-with-VecNormalize:
@@ -19,9 +27,13 @@ Two documented deviations from SB3-with-VecNormalize:
     TensorVecNormalize) and are NOT re-normalized with current stats at sample
     time (rsl_rl-style). With a drifting normalizer old samples are slightly
     stale; freeze the normalizer after warmup if this matters.
-  * On mjlab-style auto-resetting envs the stored next_obs of a done step is
-    the RESET obs. Real terminations never bootstrap (target anchors on the
-    margin), so this only touches timeout transitions — same wart as SB3.
+  * On mjlab-style auto-resetting envs the stored next_obs of a done step is the
+    RESET obs, so bootstrapping a timeout targets V(reset spawn). With a hostile
+    reset distribution (e.g. a reverse curriculum whose reset IS the failure
+    frontier) that corrupts the value of every survivor. `bootstrap_on_timeout=
+    False` (the default for the margin modes) never bootstraps a timeout, so the
+    wart cannot bite there; it remains only for CUMULATIVE, where resets are
+    benign.
 
 Memory: 2 * slots * n_envs * obs_dim * 4 bytes dominates
 (slots = buffer_size // n_envs). Size `buffer_size` accordingly for
@@ -40,11 +52,15 @@ class TensorReplayBuffer:
   """Device-resident circular replay for TensorVecEnv collection."""
 
   def __init__(self, buffer_size: int, obs_dim: int, act_dim: int,
-               n_envs: int, device: str = "cuda:0", store_l: bool = False):
+               n_envs: int, device: str = "cuda:0", store_l: bool = False,
+               bootstrap_on_timeout: bool = True):
     self.slots = max(int(buffer_size) // int(n_envs), 1)
     self.n_envs = int(n_envs)
     self.device = device
     self.store_l = bool(store_l)
+    # True: timeout transitions bootstrap (SB3 convention; correct for CUMULATIVE).
+    # False: a timeout is terminal -> min(l,g) (correct for the margin modes).
+    self.bootstrap_on_timeout = bool(bootstrap_on_timeout)
     S, N = self.slots, self.n_envs
     self.observations = th.zeros(S, N, obs_dim, device=device)
     self.next_observations = th.zeros(S, N, obs_dim, device=device)
@@ -82,7 +98,10 @@ class TensorReplayBuffer:
     upper = self.slots if self.full else self.pos
     s = th.randint(0, upper, (batch_size,), device=self.device)
     e = th.randint(0, self.n_envs, (batch_size,), device=self.device)
-    dones_eff = (self.dones[s, e] * (1.0 - self.timeouts[s, e])).reshape(-1, 1)
+    if self.bootstrap_on_timeout:
+      dones_eff = (self.dones[s, e] * (1.0 - self.timeouts[s, e])).reshape(-1, 1)
+    else:                                    # a timeout is TERMINAL (margin modes)
+      dones_eff = self.dones[s, e].reshape(-1, 1)
     if self.store_l:
       return ReachAvoidReplayBufferSamples(
         observations=self.observations[s, e],
