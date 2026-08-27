@@ -17,7 +17,7 @@ buffers' ``infos`` capture: on this path the env returns ``l_x`` directly from
 
 from __future__ import annotations
 
-from typing import Generator, Optional
+from typing import Generator, NamedTuple, Optional
 
 import numpy as np
 import torch as th
@@ -25,6 +25,21 @@ from gymnasium import spaces
 from stable_baselines3.common.buffers import RolloutBufferSamples
 
 from . import backups
+
+
+class MaskedRolloutBufferSamples(NamedTuple):
+  """``RolloutBufferSamples`` + a per-sample ``policy_mask`` (RAS handover training).
+
+  The six standard PPO fields (order preserved) plus ``policy_mask`` -- a 0/1
+  float, 1 where the REACH policy acted (trainable), 0 where a frozen hand-off
+  skill acted (excluded from the policy gradient, kept for value/GAE)."""
+  observations: th.Tensor
+  actions: th.Tensor
+  old_values: th.Tensor
+  old_log_prob: th.Tensor
+  advantages: th.Tensor
+  returns: th.Tensor
+  policy_mask: th.Tensor
 
 
 class TensorSafetyRolloutBuffer:
@@ -163,6 +178,49 @@ class TensorReachAvoidRolloutBuffer(TensorSafetyRolloutBuffer):
   def record_extras(self, l_x: th.Tensor) -> None:
     """Keep this step's target margin ``l(s)`` (straight off ``step_tensor``)."""
     self.l_x[self.pos] = l_x.reshape(self.n_envs)
+
+
+class TensorReachAvoidMaskedRolloutBuffer(TensorReachAvoidRolloutBuffer):
+  """Reach-avoid buffer + a per-step ``policy_mask`` (RAS phase-2 handover training).
+
+  Identical to :class:`TensorReachAvoidRolloutBuffer` for value/returns/GAE --
+  ``compute_returns_and_advantage`` is INHERITED UNCHANGED, so lander-driven
+  steps DO contribute to the value backup (that is the point: the reach-avoid
+  value learns to reach a state the frozen lander actually lands from). The mask
+  it additionally stores is consumed ONLY by :class:`ReachAvoidMaskedPPO1P`'s
+  ``train()`` to zero those steps out of the POLICY gradient. With an all-ones
+  mask this buffer is behaviourally identical to its parent.
+  """
+
+  def reset(self) -> None:
+    super().reset()
+    # 1.0 = reach-controlled (trainable), 0.0 = hand-off skill drove this step.
+    self.policy_mask = th.ones(self.buffer_size, self.n_envs, device=self.device)
+
+  def record_policy_mask(self, mask: th.Tensor) -> None:
+    """Keep this step's reach-active mask (straight off ``env._policy_mask``)."""
+    self.policy_mask[self.pos] = mask.reshape(self.n_envs).float()
+
+  def get(self, batch_size: Optional[int] = None
+          ) -> Generator[MaskedRolloutBufferSamples, None, None]:
+    assert self.full, "buffer not full"
+    total = self.buffer_size * self.n_envs
+    obs = self.observations.reshape(total, self.obs_dim)
+    act = self.actions.reshape(total, self.act_dim)
+    val = self._values.reshape(total)
+    logp = self.log_probs.reshape(total)
+    adv = self.advantages.reshape(total)
+    ret = self._returns.reshape(total)
+    pm = self.policy_mask.reshape(total)          # like advantages
+    idx = th.randperm(total, device=self.device)
+    if batch_size is None:
+      batch_size = total
+    for start in range(0, total, batch_size):
+      b = idx[start:start + batch_size]
+      yield MaskedRolloutBufferSamples(
+        observations=obs[b], actions=act[b], old_values=val[b],
+        old_log_prob=logp[b], advantages=adv[b], returns=ret[b],
+        policy_mask=pm[b])
 
 
 class TensorCumulativeRolloutBuffer(TensorSafetyRolloutBuffer):

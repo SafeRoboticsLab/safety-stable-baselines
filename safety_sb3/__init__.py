@@ -49,7 +49,9 @@ from .buffers_replay import (ReachAvoidReplayBuffer,
                              ReachAvoidReplayBufferSamples)
 from .buffers_rollout import (CumulativeRolloutBuffer, ReachAvoidRolloutBuffer,
                               SafetyRolloutBuffer)
-from .buffers_tensor import (TensorCumulativeRolloutBuffer,
+from .buffers_tensor import (MaskedRolloutBufferSamples,
+                             TensorCumulativeRolloutBuffer,
+                             TensorReachAvoidMaskedRolloutBuffer,
                              TensorReachAvoidRolloutBuffer,
                              TensorSafetyRolloutBuffer)
 from .callbacks import StdCapCallback
@@ -59,8 +61,8 @@ from .gamma_anneal import (GammaAnnealMixin, GeometricGammaAnneal,
                            StepGammaAnneal, make_default_gamma_schedule)
 from .leaderboard import Leaderboard, LeagueEvaluator
 from .policies import TwoPlayerSACPolicy
-from .ppo_1p import (AbstractPPO1P, CumulativePPO1P, ReachAvoidPPO1P,
-                     SafetyPPO1P)
+from .ppo_1p import (AbstractPPO1P, CumulativePPO1P, ReachAvoidMaskedPPO1P,
+                     ReachAvoidPPO1P, SafetyPPO1P)
 from .ppo_2p import AbstractPPO2P, ReachAvoidPPO2P, SafetyPPO2P
 from .ppo_base import AbstractPPO
 from .sac_1p import (AbstractSAC1P, CumulativeSAC1P, ReachAvoidSAC1P,
@@ -77,6 +79,7 @@ __all__ = [
     # --- PPO: Mode x Players ---
     "SafetyPPO1P",
     "ReachAvoidPPO1P",
+    "ReachAvoidMaskedPPO1P",
     "CumulativePPO1P",
     "SafetyPPO2P",
     "ReachAvoidPPO2P",
@@ -111,6 +114,8 @@ __all__ = [
     "CumulativeRolloutBuffer",
     "TensorSafetyRolloutBuffer",
     "TensorReachAvoidRolloutBuffer",
+    "TensorReachAvoidMaskedRolloutBuffer",
+    "MaskedRolloutBufferSamples",
     "TensorCumulativeRolloutBuffer",
     "ReachAvoidReplayBuffer",
     "ReachAvoidReplayBufferSamples",

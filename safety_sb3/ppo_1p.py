@@ -21,12 +21,14 @@ from __future__ import annotations
 import numpy as np
 import torch as th
 from gymnasium import spaces
+from torch.nn import functional as F
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.utils import obs_as_tensor
+from stable_baselines3.common.utils import explained_variance, obs_as_tensor
 from stable_baselines3.common.vec_env import VecEnv
 
 from . import backups
+from .buffers_tensor import TensorReachAvoidMaskedRolloutBuffer
 from .ppo_base import AbstractPPO
 from .reach_avoid_mixin import _ReachAvoidPlumbing
 
@@ -81,6 +83,13 @@ class AbstractPPO1P(AbstractPPO):
                 return False
 
             rollout_buffer.record_extras(l_x)
+            # Opt-in per-step policy_mask (RAS handover training): a hybrid env exposes
+            # ``_policy_mask`` (False = a frozen hand-off skill drove this step,
+            # exclude it from the policy gradient). No-op for every other env /
+            # buffer -- both getattr and hasattr miss -> byte-identical rollout.
+            pm = getattr(env, "_policy_mask", None)
+            if pm is not None and hasattr(rollout_buffer, "record_policy_mask"):
+                rollout_buffer.record_policy_mask(pm)
             rollout_buffer.add(obs, actions, rewards, episode_starts,
                                values.flatten(), log_probs)
 
@@ -251,6 +260,161 @@ class ReachAvoidPPO1P(_ReachAvoidPlumbing, AbstractPPO1P):
     """
 
     _MODE = backups.REACH_AVOID
+
+
+class ReachAvoidMaskedPPO1P(_ReachAvoidPlumbing, AbstractPPO1P):
+    """Reach-avoid PPO with a per-step **policy_mask** (RAS phase-2 handover training).
+
+    Identical to :class:`ReachAvoidPPO1P` EXCEPT that steps a frozen hand-off
+    skill drove (``env._policy_mask == 0``) are excluded from the POLICY gradient
+    while still training the VALUE (they stay in the buffer for value/returns/GAE
+    -- so the reach-avoid value learns to reach a state the lander actually lands
+    from). The mechanism, per the design:
+
+      * value loss + returns + GAE + KL diagnostics: UNCHANGED (over all samples);
+      * advantage normalization: over the UNMASKED entries only;
+      * policy loss + entropy loss: masked means (``(m*·).sum()/m.sum()``).
+
+    With an all-ones mask this reproduces :class:`ReachAvoidPPO1P` exactly (the
+    graceful-degradation property: no handover -> the proven naive-RA update).
+
+    Tensor path only (the RAS env is GPU-resident): forces the masked reach-avoid
+    rollout buffer, which is the only buffer that carries ``policy_mask``.
+    """
+
+    _MODE = backups.REACH_AVOID
+
+    def __init__(self, *args, **kwargs):
+        # Force the masked reach-avoid buffer on the tensor path (it is the only
+        # one exposing record_policy_mask + MaskedRolloutBufferSamples). Detect
+        # the tensor env exactly as AbstractPPO does, BEFORE super() runs.
+        _env = kwargs.get("env", args[1] if len(args) >= 2 else None)
+        if (getattr(_env, "is_tensor_env", False)
+                and kwargs.get("rollout_buffer_class") is None):
+            kwargs["rollout_buffer_class"] = TensorReachAvoidMaskedRolloutBuffer
+        super().__init__(*args, **kwargs)
+
+    def train(self) -> None:
+        """Stock ``PPO.train()`` with the three masked modifications above, then
+        safety_sb3's KL-adaptive-LR tail (kept identical to ``AbstractPPO.train``
+        so the recipe matches naive-RA)."""
+        # Switch to train mode (this affects batch norm / dropout)
+        self.policy.set_training_mode(True)
+        # Update optimizer learning rate (adaptive on safety_sb3, see AbstractPPO)
+        self._update_learning_rate(self.policy.optimizer)
+        clip_range = self.clip_range(self._current_progress_remaining)
+        if self.clip_range_vf is not None:
+            clip_range_vf = self.clip_range_vf(self._current_progress_remaining)
+
+        entropy_losses = []
+        pg_losses, value_losses = [], []
+        clip_fractions = []
+
+        continue_training = True
+        for epoch in range(self.n_epochs):
+            approx_kl_divs = []
+            for rollout_data in self.rollout_buffer.get(self.batch_size):
+                actions = rollout_data.actions
+                if isinstance(self.action_space, spaces.Discrete):
+                    actions = rollout_data.actions.long().flatten()
+
+                # --- RAS mask: 1 = reach-controlled (trainable), 0 = hand-off ---
+                m = rollout_data.policy_mask
+                nu = m.sum().clamp_min(1.0)
+
+                values, log_prob, entropy = self.policy.evaluate_actions(
+                    rollout_data.observations, actions)
+                values = values.flatten()
+                # Normalize advantage over the UNMASKED entries only (the masked
+                # steps' advantages never enter the policy loss; folding them into
+                # the mean/std would bias the reach-policy update).
+                advantages = rollout_data.advantages
+                if self.normalize_advantage and len(advantages) > 1:
+                    mask_bool = m > 0
+                    if bool(mask_bool.any()):
+                        adv_u = advantages[mask_bool]
+                        advantages = (advantages - adv_u.mean()) / (adv_u.std() + 1e-8)
+                    else:  # degenerate all-masked minibatch: avoid nan (loss is 0)
+                        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+                ratio = th.exp(log_prob - rollout_data.old_log_prob)
+
+                # clipped surrogate loss -- MASKED MEAN (sum over reach steps / #reach)
+                policy_loss_1 = advantages * ratio
+                policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
+                policy_loss = -(m * th.min(policy_loss_1, policy_loss_2)).sum() / nu
+
+                pg_losses.append(policy_loss.item())
+                clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()).item()
+                clip_fractions.append(clip_fraction)
+
+                if self.clip_range_vf is None:
+                    values_pred = values
+                else:
+                    values_pred = rollout_data.old_values + th.clamp(
+                        values - rollout_data.old_values, -clip_range_vf, clip_range_vf)
+                # Value loss over ALL samples (the masked/lander steps TRAIN the
+                # value -- that is the point of keeping them in the buffer).
+                value_loss = F.mse_loss(rollout_data.returns, values_pred)
+                value_losses.append(value_loss.item())
+
+                # Entropy loss -- masked identically to the policy loss.
+                if entropy is None:
+                    entropy_loss = -(m * (-log_prob)).sum() / nu
+                else:
+                    entropy_loss = -(m * entropy).sum() / nu
+                entropy_losses.append(entropy_loss.item())
+
+                loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss
+
+                # approx KL / early-stop over ALL samples (SB3 semantics kept).
+                with th.no_grad():
+                    log_ratio = log_prob - rollout_data.old_log_prob
+                    approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    approx_kl_divs.append(approx_kl_div)
+
+                if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
+                    continue_training = False
+                    if self.verbose >= 1:
+                        print(f"Early stopping at step {epoch} due to reaching max kl: {approx_kl_div:.2f}")
+                    break
+
+                self.policy.optimizer.zero_grad()
+                loss.backward()
+                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                self.policy.optimizer.step()
+
+            self._n_updates += 1
+            if not continue_training:
+                break
+
+        explained_var = explained_variance(
+            self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten())
+
+        self.logger.record("train/entropy_loss", np.mean(entropy_losses))
+        self.logger.record("train/policy_gradient_loss", np.mean(pg_losses))
+        self.logger.record("train/value_loss", np.mean(value_losses))
+        self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
+        self.logger.record("train/clip_fraction", np.mean(clip_fractions))
+        self.logger.record("train/loss", loss.item())
+        self.logger.record("train/explained_variance", explained_var)
+        if hasattr(self.policy, "log_std"):
+            self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
+        self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
+        self.logger.record("train/clip_range", clip_range)
+        if self.clip_range_vf is not None:
+            self.logger.record("train/clip_range_vf", clip_range_vf)
+
+        # KL-adaptive-LR tail -- identical to AbstractPPO.train (adjust the LR for
+        # the NEXT update from the KL just measured; keeps parity with naive-RA).
+        if self.adaptive_lr and self.desired_kl is not None:
+            kl = self.logger.name_to_value.get("train/approx_kl")
+            if kl is not None and kl > 0.0:
+                if kl > self.desired_kl * 2.0:
+                    self._adaptive_lr = max(self.lr_min, self._adaptive_lr / self.adaptive_lr_factor)
+                elif kl < self.desired_kl / 2.0:
+                    self._adaptive_lr = min(self.lr_max, self._adaptive_lr * self.adaptive_lr_factor)
+            self.logger.record("train/adaptive_lr", self._adaptive_lr)
 
 
 class CumulativePPO1P(AbstractPPO1P):

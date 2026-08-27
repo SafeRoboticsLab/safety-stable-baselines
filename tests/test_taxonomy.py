@@ -23,10 +23,10 @@ import pytest
 
 import safety_sb3
 from safety_sb3 import (CumulativeA2C1P, CumulativeDQN1P, CumulativePPO1P,
-                        CumulativeSAC1P, ReachAvoidA2C1P, ReachAvoidPPO1P,
-                        ReachAvoidPPO2P, ReachAvoidSAC1P, ReachAvoidSAC2P,
-                        SafetyA2C1P, SafetyDQN1P, SafetyPPO1P, SafetyPPO2P,
-                        SafetySAC1P, SafetySAC2P, backups)
+                        CumulativeSAC1P, ReachAvoidA2C1P, ReachAvoidMaskedPPO1P,
+                        ReachAvoidPPO1P, ReachAvoidPPO2P, ReachAvoidSAC1P,
+                        ReachAvoidSAC2P, SafetyA2C1P, SafetyDQN1P, SafetyPPO1P,
+                        SafetyPPO2P, SafetySAC1P, SafetySAC2P, backups)
 from safety_sb3.buffers_rollout import (CumulativeRolloutBuffer,
                                         ReachAvoidRolloutBuffer,
                                         SafetyRolloutBuffer,
@@ -48,11 +48,17 @@ ROSTER = {
   SafetyDQN1P: (AVOID, 1), CumulativeDQN1P: (CUM, 1),
 }
 
+# Sanctioned VARIANTS of a MAP cell: same (Mode, Players) and the same Mode/
+# Players naming law, but with a behavioural MODIFIER in the name (not a new MAP
+# axis). ReachAvoidMaskedPPO1P (RAS phase-2 handover training) is ReachAvoidPPO1P with a
+# per-step policy_mask — reach-avoid, 1 player, "Masked" is the modifier.
+VARIANTS = {ReachAvoidMaskedPPO1P: (RA, 1)}
+
 
 def test_every_class_name_states_its_mode_and_players():
   """The name is the spec: parse it back and check it against the class."""
   prefix = {AVOID: "Safety", RA: "ReachAvoid", CUM: "Cumulative"}
-  for cls, (mode, players) in ROSTER.items():
+  for cls, (mode, players) in {**ROSTER, **VARIANTS}.items():
     assert cls._MODE == mode, f"{cls.__name__} declares _MODE={cls._MODE}"
     assert cls.__name__.startswith(prefix[mode]), cls.__name__
     assert cls.__name__.endswith(f"{players}P"), cls.__name__
@@ -65,7 +71,8 @@ def test_roster_is_exactly_what_the_package_exports():
     if isinstance(getattr(safety_sb3, n), type)
     and n.endswith(("1P", "2P")) and not n.startswith("Abstract")
   }
-  assert exported == set(ROSTER), exported ^ set(ROSTER)
+  assert exported == set(ROSTER) | set(VARIANTS), \
+    exported ^ (set(ROSTER) | set(VARIANTS))
 
 
 def test_no_isaacs_or_gameplay_names_survive():
