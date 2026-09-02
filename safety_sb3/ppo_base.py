@@ -58,6 +58,10 @@ class AbstractPPO(GammaAnnealMixin, PPO):
 
     :param bootstrap_on_timeout: if False (default) skip PPO's timeout value
         bootstrapping — correct whenever the reward is a margin ``g(s)``.
+        Legal only in ``CUMULATIVE`` mode, where the reward is an ordinary dense
+        return and an episode cut at the time limit has NOT ended: leaving the
+        bootstrap off there teaches the policy that the horizon itself is a
+        terminal event. Supported on both the numpy and the tensor path.
     :param normalize_obs: wrap the env in VecNormalize(norm_obs=True,
         norm_reward=False) — obs normalization is needed to match rsl_rl on hard
         robot tasks; reward normalization is refused (it corrupts ``g``).
@@ -108,10 +112,10 @@ class AbstractPPO(GammaAnnealMixin, PPO):
         # GPU-resident path? (detected from the env; see tensor_env.py)
         _env = kwargs.get("env", args[1] if len(args) >= 2 else None)
         self._tensor_path = bool(getattr(_env, "is_tensor_env", False))
-        if self._tensor_path and bootstrap_on_timeout:
+        if bootstrap_on_timeout and self._MODE != backups.CUMULATIVE:
             raise ValueError(
-                "bootstrap_on_timeout=True is not supported on the tensor path "
-                "(it is wrong for safety margins in any case)."
+                f"bootstrap_on_timeout=True is invalid for mode {self._MODE!r}: the reward is the "
+                "safety margin g(s), and bootstrapping it would add a value to a physical quantity."
             )
 
         # Default buffer: the pair implementing THIS learner's mode -- numpy or
