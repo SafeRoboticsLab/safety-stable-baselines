@@ -35,7 +35,8 @@ class TensorSafetyRolloutBuffer:
   def __init__(self, buffer_size: int, observation_space: spaces.Space,
                action_space: spaces.Space, device: str = "cuda:0",
                gae_lambda: float = 0.95, gamma: float = 0.99,
-               n_envs: int = 1, mode: str | None = None, **_ignored):
+               n_envs: int = 1, mode: str | None = None,
+               critic_obs_dim: int | None = None, **_ignored):
     self._MODE = backups.check_mode(self._MODE if mode is None else mode)
     self.buffer_size = int(buffer_size)
     self.n_envs = int(n_envs)
@@ -44,6 +45,11 @@ class TensorSafetyRolloutBuffer:
     self.gae_lambda = float(gae_lambda)
     self.obs_dim = int(np.prod(observation_space.shape))
     self.act_dim = int(np.prod(action_space.shape))
+    # Asymmetric (privileged) critic: when set, the buffer keeps a SECOND
+    # observation of this dim beside each actor obs (the value net's input), and
+    # get() packs the two together so stock PPO.train can carry it unchanged. 0 /
+    # None => symmetric — the buffer is byte-identical to before.
+    self.critic_obs_dim = int(critic_obs_dim) if critic_obs_dim else 0
     self.reset()
 
   def reset(self) -> None:
@@ -56,6 +62,8 @@ class TensorSafetyRolloutBuffer:
     self.log_probs = th.zeros(T, N, device=dev)
     self.advantages = th.zeros(T, N, device=dev)
     self._returns = th.zeros(T, N, device=dev)
+    if self.critic_obs_dim:
+      self.critic_observations = th.zeros(T, N, self.critic_obs_dim, device=dev)
     self.pos = 0
     self.full = False
 
@@ -70,7 +78,7 @@ class TensorSafetyRolloutBuffer:
 
   def add(self, obs: th.Tensor, actions: th.Tensor, rewards: th.Tensor,
           episode_starts: th.Tensor, values: th.Tensor,
-          log_probs: th.Tensor) -> None:
+          log_probs: th.Tensor, critic_obs: th.Tensor | None = None) -> None:
     p = self.pos
     self.observations[p] = obs.reshape(self.n_envs, self.obs_dim)
     self.actions[p] = actions.reshape(self.n_envs, self.act_dim)
@@ -78,6 +86,12 @@ class TensorSafetyRolloutBuffer:
     self.episode_starts[p] = episode_starts.reshape(self.n_envs).float()
     self._values[p] = values.reshape(self.n_envs)
     self.log_probs[p] = log_probs.reshape(self.n_envs)
+    if self.critic_obs_dim:
+      if critic_obs is None:
+        raise ValueError(
+          "asymmetric rollout buffer (critic_obs_dim set) needs a critic_obs each "
+          "step; the collect loop passed None.")
+      self.critic_observations[p] = critic_obs.reshape(self.n_envs, self.critic_obs_dim)
     self.pos += 1
     if self.pos == self.buffer_size:
       self.full = True
@@ -133,13 +147,20 @@ class TensorSafetyRolloutBuffer:
     logp = self.log_probs.reshape(total)
     adv = self.advantages.reshape(total)
     ret = self._returns.reshape(total)
+    # Asymmetric critic: pack the privileged critic obs onto the actor obs so the
+    # SB3 update loop carries it through ``rollout_data.observations`` unchanged;
+    # AsymmetricActorCriticPolicy.evaluate_actions splits it back out. Symmetric
+    # runs skip this entirely => identical samples as before.
+    cobs = (self.critic_observations.reshape(total, self.critic_obs_dim)
+            if self.critic_obs_dim else None)
     idx = th.randperm(total, device=self.device)
     if batch_size is None:
       batch_size = total
     for start in range(0, total, batch_size):
       b = idx[start:start + batch_size]
+      observations = obs[b] if cobs is None else th.cat([obs[b], cobs[b]], dim=-1)
       yield RolloutBufferSamples(
-        observations=obs[b], actions=act[b], old_values=val[b],
+        observations=observations, actions=act[b], old_values=val[b],
         old_log_prob=logp[b], advantages=adv[b], returns=ret[b])
 
 

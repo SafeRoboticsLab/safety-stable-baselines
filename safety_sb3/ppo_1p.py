@@ -35,6 +35,9 @@ from .reach_avoid_mixin import _ReachAvoidPlumbing
 class AbstractPPO1P(AbstractPPO):
     """PPO with the ordinary single-actor rollout, backup chosen by ``_MODE``."""
 
+    #: 1P PPO supports an asymmetric (privileged) critic; see AbstractPPO.__init__.
+    _supports_asymmetric = True
+
     def _collect_rollouts_tensor(
         self,
         env,
@@ -67,13 +70,25 @@ class AbstractPPO1P(AbstractPPO):
             self._t_ep_len = th.zeros(env.num_envs, device=dev)
         fin_ret, fin_len = [], []
 
+        # Asymmetric (privileged) critic: the value net reads a SEPARATE obs group
+        # the env exposes via critic_obs() (base_lin_vel etc.). It tracks the same
+        # transition as ``obs`` — the env stashed it on the last reset/step. When
+        # symmetric (the default) this whole branch is inert and the loop is the
+        # one it always was.
+        asym = getattr(self, "_asymmetric", False)
+        critic_obs = env.critic_obs() if asym else None
+
         n_steps = 0
         while n_steps < n_rollout_steps:
             with th.no_grad():
-                actions, values, log_probs = self.policy(obs)
+                if asym:
+                    actions, values, log_probs = self.policy(obs, critic_obs=critic_obs)
+                else:
+                    actions, values, log_probs = self.policy(obs)
             clipped = th.clamp(actions, low, high)
 
             new_obs, rewards, dones, timeouts, l_x = env.step_tensor(clipped)
+            new_critic_obs = env.critic_obs() if asym else None
             self.num_timesteps += env.num_envs
             n_steps += 1
 
@@ -98,7 +113,7 @@ class AbstractPPO1P(AbstractPPO):
 
             rollout_buffer.record_extras(l_x)
             rollout_buffer.add(obs, actions, buf_rewards, episode_starts,
-                               values.flatten(), log_probs)
+                               values.flatten(), log_probs, critic_obs=critic_obs)
 
             self._t_ep_ret += rewards
             self._t_ep_len += 1.0
@@ -110,10 +125,11 @@ class AbstractPPO1P(AbstractPPO):
                 self._t_ep_len = th.where(d, th.zeros_like(self._t_ep_len), self._t_ep_len)
 
             obs = new_obs
+            critic_obs = new_critic_obs
             episode_starts = dones.float()
 
         with th.no_grad():
-            last_values = self.policy.predict_values(obs)
+            last_values = self.policy.predict_values(critic_obs if asym else obs)
         rollout_buffer.compute_returns_and_advantage(
             last_values=last_values.flatten(), dones=dones.float())
 
