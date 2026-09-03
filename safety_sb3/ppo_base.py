@@ -43,6 +43,7 @@ algorithm without subclassing.
 
 from __future__ import annotations
 
+import numpy as np
 from stable_baselines3.common.utils import update_learning_rate
 from stable_baselines3.ppo.ppo import PPO
 
@@ -58,6 +59,10 @@ class AbstractPPO(GammaAnnealMixin, PPO):
 
     :param bootstrap_on_timeout: if False (default) skip PPO's timeout value
         bootstrapping — correct whenever the reward is a margin ``g(s)``.
+        Legal only in ``CUMULATIVE`` mode, where the reward is an ordinary dense
+        return and an episode cut at the time limit has NOT ended: leaving the
+        bootstrap off there teaches the policy that the horizon itself is a
+        terminal event. Supported on both the numpy and the tensor path.
     :param normalize_obs: wrap the env in VecNormalize(norm_obs=True,
         norm_reward=False) — obs normalization is needed to match rsl_rl on hard
         robot tasks; reward normalization is refused (it corrupts ``g``).
@@ -79,6 +84,11 @@ class AbstractPPO(GammaAnnealMixin, PPO):
 
     #: the Bellman operator this learner converges to; concretes set it
     _MODE = backups.AVOID
+
+    #: whether this learner can consume an asymmetric (privileged) critic obs
+    #: group. Only the single-actor tensor rollout (AbstractPPO1P) does; the base
+    #: and the two-player game leave it off. See __init__.
+    _supports_asymmetric = False
 
     def __init__(
         self,
@@ -108,10 +118,42 @@ class AbstractPPO(GammaAnnealMixin, PPO):
         # GPU-resident path? (detected from the env; see tensor_env.py)
         _env = kwargs.get("env", args[1] if len(args) >= 2 else None)
         self._tensor_path = bool(getattr(_env, "is_tensor_env", False))
-        if self._tensor_path and bootstrap_on_timeout:
+
+        # Asymmetric (privileged) critic. When the tensor env exposes a critic obs
+        # group of its own (env.critic_observation_space), route it to a value net
+        # that reads it — the actor stays on the deployable obs. Auto-detected so
+        # the factory only has to add the group to the env cfg. A symmetric env
+        # (no critic group) is byte-identical to before: nothing below runs.
+        self._critic_obs_space = getattr(_env, "critic_observation_space", None)
+        self._asymmetric = bool(
+            self._critic_obs_space is not None
+            and self._tensor_path
+            and getattr(self, "_supports_asymmetric", False))
+        if self._asymmetric:
+            from .policies_asym import AsymmetricActorCriticPolicy
+            # Swap in the asymmetric policy unless the caller already passed one
+            # (a string "MlpPolicy" or the stock class is upgraded; an explicit
+            # asymmetric subclass is left alone).
+            _pol = kwargs.get("policy", args[0] if len(args) >= 1 else None)
+            _is_asym = isinstance(_pol, type) and issubclass(_pol, AsymmetricActorCriticPolicy)
+            if not _is_asym:
+                if "policy" in kwargs:
+                    kwargs["policy"] = AsymmetricActorCriticPolicy
+                else:
+                    args = list(args)
+                    args[0] = AsymmetricActorCriticPolicy
+                    args = tuple(args)
+            policy_kwargs = dict(kwargs.get("policy_kwargs") or {})
+            policy_kwargs["critic_observation_space"] = self._critic_obs_space
+            kwargs["policy_kwargs"] = policy_kwargs
+            # The tensor rollout buffer keeps the critic obs beside each actor obs.
+            rollout_buffer_kwargs = dict(rollout_buffer_kwargs or {})
+            rollout_buffer_kwargs["critic_obs_dim"] = int(np.prod(self._critic_obs_space.shape))
+
+        if bootstrap_on_timeout and self._MODE != backups.CUMULATIVE:
             raise ValueError(
-                "bootstrap_on_timeout=True is not supported on the tensor path "
-                "(it is wrong for safety margins in any case)."
+                f"bootstrap_on_timeout=True is invalid for mode {self._MODE!r}: the reward is the "
+                "safety margin g(s), and bootstrapping it would add a value to a physical quantity."
             )
 
         # Default buffer: the pair implementing THIS learner's mode -- numpy or

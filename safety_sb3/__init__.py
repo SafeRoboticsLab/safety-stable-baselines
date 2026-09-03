@@ -59,6 +59,7 @@ from .gamma_anneal import (GammaAnnealMixin, GeometricGammaAnneal,
                            StepGammaAnneal, make_default_gamma_schedule)
 from .leaderboard import Leaderboard, LeagueEvaluator
 from .policies import TwoPlayerSACPolicy
+from .policies_asym import AsymmetricActorCriticPolicy
 from .ppo_1p import (AbstractPPO1P, CumulativePPO1P, ReachAvoidPPO1P,
                      SafetyPPO1P)
 from .ppo_2p import AbstractPPO2P, ReachAvoidPPO2P, SafetyPPO2P
@@ -115,6 +116,7 @@ __all__ = [
     "ReachAvoidReplayBuffer",
     "ReachAvoidReplayBufferSamples",
     "TwoPlayerSACPolicy",
+    "AsymmetricActorCriticPolicy",
     # --- the two-player league ---
     "Leaderboard",
     "LeagueEvaluator",

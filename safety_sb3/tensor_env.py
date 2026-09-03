@@ -37,6 +37,11 @@ class TensorVecEnv(VecEnv):
 
   is_tensor_env = True
   render_mode = None
+  #: gymnasium Space of the PRIVILEGED critic observation, or None for a
+  #: state-only (symmetric) critic. When set, a PPO-family learner routes it to
+  #: an asymmetric value net; ``critic_obs()`` returns the current group. See
+  #: :class:`~safety_sb3.policies_asym.AsymmetricActorCriticPolicy`.
+  critic_observation_space = None
 
   def __init__(self, num_envs: int, observation_space: spaces.Space,
                action_space: spaces.Space, device: str = "cuda:0"):
@@ -56,6 +61,14 @@ class TensorVecEnv(VecEnv):
     ``timeouts`` = truncated & ~terminated; ``l_x`` = target margin (zeros
     for avoid-only envs)."""
     raise NotImplementedError
+
+  def critic_obs(self) -> Optional[th.Tensor]:
+    """The PRIVILEGED critic observation for the last transition, or None.
+
+    Returns the group named by :attr:`critic_observation_space`; ``None`` on a
+    symmetric env (the default). The value net reads this instead of the actor
+    obs; the actor never sees it and it is discarded at deploy."""
+    return None
 
   def metrics(self) -> dict[str, float]:
     """Optional per-rollout scalars (curriculum levels, task metrics) that the
@@ -119,6 +132,17 @@ class TensorVecNormalize(TensorVecEnv):
     self.obs_mean = th.zeros(dim, device=dev)
     self.obs_var = th.ones(dim, device=dev)
     self.count = th.tensor(1e-4, device=dev)
+    # Asymmetric (privileged) critic: a SECOND running normalizer for the critic
+    # obs group, which has different dims and statistics from the actor obs. Only
+    # allocated when the wrapped env exposes a critic group; otherwise this class
+    # is byte-identical to before (no extra state, no extra saved tensors).
+    self.critic_observation_space = getattr(venv, "critic_observation_space", None)
+    self._last_critic_obs = None
+    if self.critic_observation_space is not None:
+      cdim = int(np.prod(self.critic_observation_space.shape))
+      self.critic_obs_mean = th.zeros(cdim, device=dev)
+      self.critic_obs_var = th.ones(cdim, device=dev)
+      self.critic_count = th.tensor(1e-4, device=dev)
 
   # --- normalization -------------------------------------------------------
   def _update(self, obs: th.Tensor) -> None:
@@ -140,6 +164,44 @@ class TensorVecNormalize(TensorVecEnv):
       -self.clip_obs, self.clip_obs,
     )
 
+  # --- privileged critic group (only when the env exposes one) --------------
+  def _update_critic(self, obs: th.Tensor) -> None:
+    """Running-moments update of the CRITIC normalizer (twin of ``_update``)."""
+    batch_mean = obs.mean(dim=0)
+    batch_var = obs.var(dim=0, unbiased=False)
+    batch_count = obs.shape[0]
+    delta = batch_mean - self.critic_obs_mean
+    tot = self.critic_count + batch_count
+    self.critic_obs_mean += delta * batch_count / tot
+    m_a = self.critic_obs_var * self.critic_count
+    m_b = batch_var * batch_count
+    m2 = m_a + m_b + delta.square() * self.critic_count * batch_count / tot
+    self.critic_obs_var = m2 / tot
+    self.critic_count = tot
+
+  def normalize_critic_obs(self, obs: th.Tensor) -> th.Tensor:
+    return th.clamp(
+      (obs - self.critic_obs_mean) / th.sqrt(self.critic_obs_var + self.epsilon),
+      -self.clip_obs, self.clip_obs,
+    )
+
+  def _refresh_critic_obs(self) -> None:
+    """Read the wrapped env's raw critic group, update its normalizer (in training
+    mode) and stash the normalized tensor for :meth:`critic_obs`."""
+    if self.critic_observation_space is None:
+      return
+    raw = self.venv.critic_obs()
+    if raw is None:
+      self._last_critic_obs = None
+      return
+    if self.training:
+      self._update_critic(raw)
+    self._last_critic_obs = self.normalize_critic_obs(raw)
+
+  def critic_obs(self) -> Optional[th.Tensor]:
+    """The normalized privileged critic obs of the last reset/step, or None."""
+    return self._last_critic_obs
+
   def normalize_obs_np(self, obs: np.ndarray) -> np.ndarray:
     """Numpy convenience for eval/video harnesses."""
     t = th.as_tensor(obs, dtype=th.float32, device=self.device)
@@ -150,12 +212,14 @@ class TensorVecNormalize(TensorVecEnv):
     obs = self.venv.reset()
     if self.training:
       self._update(obs)
+    self._refresh_critic_obs()
     return self.normalize_obs(obs)
 
   def step_tensor(self, actions: th.Tensor):
     obs, r, dones, timeouts, l_x = self.venv.step_tensor(actions)
     if self.training:
       self._update(obs)
+    self._refresh_critic_obs()
     return self.normalize_obs(obs), r, dones, timeouts, l_x
 
   def metrics(self) -> dict[str, float]:
@@ -182,8 +246,17 @@ class TensorVecNormalize(TensorVecEnv):
 
   # --- persistence ----------------------------------------------------------
   def save(self, path: str) -> None:
-    th.save({"obs_mean": self.obs_mean, "obs_var": self.obs_var,
-             "count": self.count}, path)
+    state = {"obs_mean": self.obs_mean, "obs_var": self.obs_var,
+             "count": self.count}
+    # Pair the critic normalizer on the SAME checkpoint (only when present, so a
+    # symmetric run's file is byte-identical to before). Eval never reads it — the
+    # critic is training-only — but a warm-start / resume needs it beside the
+    # actor stats to fit further without a normalizer discontinuity.
+    if self.critic_observation_space is not None:
+      state.update(critic_obs_mean=self.critic_obs_mean,
+                   critic_obs_var=self.critic_obs_var,
+                   critic_count=self.critic_count)
+    th.save(state, path)
 
   @classmethod
   def load(cls, path: str, venv: TensorVecEnv,
@@ -193,4 +266,12 @@ class TensorVecNormalize(TensorVecEnv):
     obj.obs_mean = state["obs_mean"].to(venv.device)
     obj.obs_var = state["obs_var"].to(venv.device)
     obj.count = state["count"].to(venv.device)
+    # Restore the critic normalizer when BOTH this env has a critic group and the
+    # checkpoint carries one. An old (actor-only) checkpoint loaded into an
+    # asymmetric env keeps the freshly-initialized critic stats; a symmetric env
+    # ignores any critic keys. Either way old checkpoints load unchanged.
+    if obj.critic_observation_space is not None and "critic_obs_mean" in state:
+      obj.critic_obs_mean = state["critic_obs_mean"].to(venv.device)
+      obj.critic_obs_var = state["critic_obs_var"].to(venv.device)
+      obj.critic_count = state["critic_count"].to(venv.device)
     return obj

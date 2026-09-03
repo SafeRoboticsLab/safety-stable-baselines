@@ -8,9 +8,10 @@
 
 Everything specific to *one* player lives here: the two rollout loops (numpy /
 GPU-resident), which are SB3's ``OnPolicyAlgorithm.collect_rollouts`` with the
-timeout value-bootstrap gated off and one added call — the buffer is handed each
-step's extras so it can keep whatever its own operator needs (see
-:mod:`safety_sb3.buffers_rollout`).
+timeout value-bootstrap gated behind ``bootstrap_on_timeout`` (off by default,
+and refused outright in the safety modes, where the reward is a margin) and one
+added call — the buffer is handed each step's extras so it can keep whatever its
+own operator needs (see :mod:`safety_sb3.buffers_rollout`).
 
 The three concrete learners below are one line each. That is the point of the
 split: the mode axis costs a line, the players axis costs a loop.
@@ -33,6 +34,9 @@ from .reach_avoid_mixin import _ReachAvoidPlumbing
 
 class AbstractPPO1P(AbstractPPO):
     """PPO with the ordinary single-actor rollout, backup chosen by ``_MODE``."""
+
+    #: 1P PPO supports an asymmetric (privileged) critic; see AbstractPPO.__init__.
+    _supports_asymmetric = True
 
     def _collect_rollouts_tensor(
         self,
@@ -66,13 +70,25 @@ class AbstractPPO1P(AbstractPPO):
             self._t_ep_len = th.zeros(env.num_envs, device=dev)
         fin_ret, fin_len = [], []
 
+        # Asymmetric (privileged) critic: the value net reads a SEPARATE obs group
+        # the env exposes via critic_obs() (base_lin_vel etc.). It tracks the same
+        # transition as ``obs`` — the env stashed it on the last reset/step. When
+        # symmetric (the default) this whole branch is inert and the loop is the
+        # one it always was.
+        asym = getattr(self, "_asymmetric", False)
+        critic_obs = env.critic_obs() if asym else None
+
         n_steps = 0
         while n_steps < n_rollout_steps:
             with th.no_grad():
-                actions, values, log_probs = self.policy(obs)
+                if asym:
+                    actions, values, log_probs = self.policy(obs, critic_obs=critic_obs)
+                else:
+                    actions, values, log_probs = self.policy(obs)
             clipped = th.clamp(actions, low, high)
 
             new_obs, rewards, dones, timeouts, l_x = env.step_tensor(clipped)
+            new_critic_obs = env.critic_obs() if asym else None
             self.num_timesteps += env.num_envs
             n_steps += 1
 
@@ -80,9 +96,24 @@ class AbstractPPO1P(AbstractPPO):
             if not callback.on_step():
                 return False
 
+            # Timeout bootstrapping (CUMULATIVE only; the constructor refuses it for a margin
+            # reward). An episode cut at the time limit has not ended, so its last transition owes
+            # the policy the return it would have gone on to collect; without this the -200
+            # termination-style penalties and the missing tail both read as "the horizon is bad".
+            #
+            # The bootstrap value is V(s_t), NOT V(s_{t+1}): mjlab auto-resets INSIDE env.step, so
+            # ``new_obs`` on a truncated row is already the RESET state and its value is unrelated
+            # to where the episode was cut. This is exactly rsl_rl's own timeout handling
+            # (``rewards += gamma * values * time_outs``), which the humanoid recipe mirrors — for a
+            # near-stationary policy V(s_t) ~ V(s_{t+1}) at the horizon, and it needs no terminal obs.
+            # Kept off ``rewards`` itself so rollout/ep_rew_mean stays the RAW episode return.
+            buf_rewards = rewards
+            if self.bootstrap_on_timeout and bool(timeouts.any()):
+                buf_rewards = rewards + self.gamma * values.flatten() * timeouts.float()
+
             rollout_buffer.record_extras(l_x)
-            rollout_buffer.add(obs, actions, rewards, episode_starts,
-                               values.flatten(), log_probs)
+            rollout_buffer.add(obs, actions, buf_rewards, episode_starts,
+                               values.flatten(), log_probs, critic_obs=critic_obs)
 
             self._t_ep_ret += rewards
             self._t_ep_len += 1.0
@@ -94,10 +125,11 @@ class AbstractPPO1P(AbstractPPO):
                 self._t_ep_len = th.where(d, th.zeros_like(self._t_ep_len), self._t_ep_len)
 
             obs = new_obs
+            critic_obs = new_critic_obs
             episode_starts = dones.float()
 
         with th.no_grad():
-            last_values = self.policy.predict_values(obs)
+            last_values = self.policy.predict_values(critic_obs if asym else obs)
         rollout_buffer.compute_returns_and_advantage(
             last_values=last_values.flatten(), dones=dones.float())
 
